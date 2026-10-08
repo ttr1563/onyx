@@ -189,6 +189,16 @@ static __always_inline int write_protection_enabled(void)
 }
 
 #define OSMANTHUS_MAX_ANCESTORS 256
+#define OSMANTHUS_MINOR_BITS 20
+#define OSMANTHUS_MINOR_MASK ((1U << OSMANTHUS_MINOR_BITS) - 1)
+
+static __always_inline unsigned int userspace_device_id(unsigned int device)
+{
+    unsigned int major = device >> OSMANTHUS_MINOR_BITS;
+    unsigned int minor = device & OSMANTHUS_MINOR_MASK;
+
+    return (minor & 0xff) | (major << 8) | ((minor & ~0xff) << 12);
+}
 
 struct guard_context {
     struct dentry *current;
@@ -218,7 +228,7 @@ static long guard_dentry_step(unsigned int index, void *data)
     if (!superblock)
         return 1;
     key.inode = BPF_CORE_READ(inode, i_ino);
-    key.device = BPF_CORE_READ(superblock, s_dev);
+    key.device = userspace_device_id(BPF_CORE_READ(superblock, s_dev));
     key.action = context->action;
     context->event_key = key;
 
@@ -286,7 +296,7 @@ static long guard_mount_step(unsigned int index, void *data)
     if (!superblock)
         return 1;
     key.inode = BPF_CORE_READ(inode, i_ino);
-    key.device = BPF_CORE_READ(superblock, s_dev);
+    key.device = userspace_device_id(BPF_CORE_READ(superblock, s_dev));
     context->event_key.inode = key.inode;
     context->event_key.device = key.device;
     context->event_key.action = 6;

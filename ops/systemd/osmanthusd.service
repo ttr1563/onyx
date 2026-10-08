@@ -15,7 +15,6 @@ RuntimeDirectoryMode=0755
 LogsDirectory=osmanthus
 LogsDirectoryMode=0700
 NoNewPrivileges=no
-PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=strict
 ReadWritePaths=/run/osmanthus /var/log/osmanthus /sys/fs/bpf

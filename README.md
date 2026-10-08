@@ -254,7 +254,7 @@ cargo clippy --all-targets --all-features -- -D warnings
 sudo ./target/debug/examples/bpf-smoke
 ```
 
-The BPF smoke test uses a temporary directory under `/tmp`; do not run it on a
+The BPF smoke test uses a temporary directory under `/var/tmp`; do not run it on a
 host whose kernel capabilities and workload impact have not been reviewed.
 
 ## License

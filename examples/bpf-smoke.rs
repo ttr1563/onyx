@@ -23,7 +23,7 @@ fn main() -> osmanthus_guard::Result<()> {
     if unsafe { libc::geteuid() } != 0 {
         return Err(osmanthus_guard::OsmanthusError::RootRequired);
     }
-    let temporary = TempDir::new_in("/tmp")?;
+    let temporary = TempDir::new_in("/var/tmp")?;
     let protected = temporary.path().join("protected");
     let outside = temporary.path().join("outside");
     fs::create_dir_all(&protected)?;

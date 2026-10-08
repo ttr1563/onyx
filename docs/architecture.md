@@ -44,6 +44,12 @@ dentries. Reaching the bound returns `ELOOP` instead of allowing the operation, 
 roots. This rare availability tradeoff prevents depth-based escape and is part
 of the supported-path contract.
 
+Resource keys pair the inode with the filesystem device identity. The BPF side
+converts the kernel-internal `dev_t` to the same encoded representation returned
+by userspace `stat`, so roots on ordinary block filesystems and virtual
+filesystems resolve to the same map key. The daemon keeps the host `/tmp` and
+`/var/tmp` namespaces because configured roots are host paths.
+
 ## Policy integrity
 
 The effective policy is `/etc/osmanthus/policy.json` with a companion SHA-256 digest.
