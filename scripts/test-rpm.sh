@@ -37,7 +37,10 @@ fi
 
 mkdir -p "$install_root/var/lib/onyx"
 touch "$install_root/var/lib/onyx/retention-marker"
+mkdir -p "$install_root/etc/onyx"
+touch "$install_root/etc/onyx/retention-marker"
 rpm --root "$install_root" --dbpath /var/lib/rpm --nodeps -e onyx onyx-release
 test -e "$install_root/var/lib/onyx/retention-marker"
+test -e "$install_root/etc/onyx/retention-marker"
 test ! -e "$install_root/usr/bin/onyx"
 test ! -e "$install_root/etc/yum.repos.d/onyx.repo"

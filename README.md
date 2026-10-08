@@ -5,7 +5,7 @@ Onyx is a lightweight command guard that detects risky operations on Linux serve
 > [!IMPORTANT]
 > Onyx v0.1 protects only commands launched through `onyx run -- ...`. It is a safety boundary for operator mistakes and constrained automation, not a host-wide EDR. A user who can bypass Onyx or an attacker with root access can disable this protection.
 >
-> TOTP does not provide meaningful resistance to code running as the operating-system identity that owns the Onyx state: that identity can read the verifier seed. Use a dedicated, constrained identity to limit impact. Administrator-owned verification and hardware-backed asymmetric approval require the planned broker design and are not claimed by v0.1.
+> A root-owned system policy prevents the protected identity from changing custom rule definitions. The protected identity still owns command events, permits, and its execution-approval TOTP seed. Onyx therefore does not claim to contain a complete compromise of that identity. Use a dedicated, constrained identity to limit impact.
 
 ## What it does
 
@@ -15,17 +15,18 @@ Onyx is a lightweight command guard that detects risky operations on Linux serve
 - expires approvals after 30 seconds and consumes each approval once;
 - rejects reuse of a TOTP code in the same time step;
 - writes redacted, one-record-per-line JSON audit logs locally;
+- stores custom rule definitions as a root-owned, integrity-checked system policy;
 - stores state with owner-only permissions and rejects symbolic links to sensitive state files.
 
 Onyx does not upload logs or require an AWS, Google, or other cloud account. Google Authenticator, 1Password, Aegis, and other RFC 6238-compatible applications can scan its enrollment URI.
 
 ## Current platform support
 
-- Protection target: Linux
+- Protection target: Linux, including Linux distributions running inside WSL 2
 - Authenticator: any RFC 6238-compatible TOTP application on Linux, macOS, Android, iOS, or Windows
 - Rust: 1.91 or later when building from source
 
-macOS and Windows command protection, OpenSSH/FIDO security keys, eBPF enforcement, and a privileged daemon are not part of v0.1.
+Native macOS and Windows command protection, OpenSSH/FIDO security keys, eBPF enforcement, and a privileged daemon are not part of v0.1. On Windows, Onyx protects only Linux commands launched through `onyx run` inside WSL; it does not intercept PowerShell, Command Prompt, or native Windows processes.
 
 ## Install
 
@@ -45,7 +46,27 @@ sudo dnf install onyx
 sudo dnf upgrade onyx
 ```
 
-The initial repository publishes an `x86_64` package built and tested on Amazon Linux 2023. Other RPM distributions and `aarch64` are not yet verified. Package removal leaves `/var/lib/onyx` state and audit evidence intact; remove retained data only after reviewing incident and retention requirements.
+The initial repository publishes an `x86_64` package built and tested on Amazon Linux 2023. Other RPM distributions and `aarch64` are not yet verified. Package removal leaves `/var/lib/onyx` and `/etc/onyx` state and audit evidence intact; remove retained data only after reviewing incident and retention requirements.
+
+### Debian or Ubuntu with APT
+
+Install the repository key after verifying its fingerprint, then install the scoped deb822 repository definition:
+
+```console
+curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.asc
+gpg --show-keys --with-fingerprint onyx.asc
+# Expected: E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C
+sudo install -D -m0644 onyx.asc /etc/apt/keyrings/onyx.asc
+
+curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.sources
+sudo install -m0644 onyx.sources /etc/apt/sources.list.d/onyx.sources
+rm onyx.asc onyx.sources
+
+sudo apt-get update
+sudo apt-get install onyx
+```
+
+The initial APT repository supports `amd64` on Debian 12 and Ubuntu 22.04 or later. `Signed-By` limits this repository to the dedicated Onyx key. Upgrade with `sudo apt-get update && sudo apt-get install --only-upgrade onyx`. Removing the package intentionally preserves `/var/lib/onyx` and `/etc/onyx` state and audit evidence.
 
 ### Homebrew on Linux or macOS
 
@@ -63,13 +84,43 @@ brew update
 brew upgrade ttr1563/onyx/onyx
 ```
 
-### Build from source
+### Install from a release tag with Cargo
+
+Use an immutable release tag instead of the mutable default branch:
 
 ```console
-git clone https://github.com/ttr1563/onyx.git
-cd onyx
-cargo install --path .
+cargo install \
+  --git https://github.com/ttr1563/onyx.git \
+  --tag v0.1.2 \
+  --locked
 ```
+
+This requires Rust 1.91 or later and the platform build toolchain.
+
+### Clone for development
+
+```console
+git clone --branch v0.1.2 --depth 1 https://github.com/ttr1563/onyx.git
+cd onyx
+cargo install --path . --locked
+```
+
+### Windows x64 through WSL 2
+
+Onyx is not a native Windows command guard. The published APT package is `amd64`, so this path currently targets x64 Windows. From an elevated PowerShell session, install WSL and restart if Windows requests it:
+
+```powershell
+wsl --install
+```
+
+Open the installed Ubuntu terminal and follow the APT instructions above. Run protected commands inside that terminal:
+
+```console
+onyx init --account windows-wsl
+onyx run -- rm -rf /example
+```
+
+Only commands inside WSL and explicitly launched through `onyx run` are protected. PowerShell, `cmd.exe`, `.exe` processes started outside WSL, and Windows services remain outside the protection boundary. See the [installation guide](https://ttr1563.github.io/onyx/install.html) for prerequisites, updates, uninstall behavior, and platform boundaries.
 
 ## Initialize
 
@@ -90,6 +141,14 @@ Default state paths:
 | explicit override | `onyx --state-dir /path ...` or `ONYX_STATE_DIR` |
 
 The state directory is mode `0700`; configuration, events, authentication state, locks, and audit files are mode `0600`.
+
+Initialize the root-owned system policy separately. This creates an independent administrator TOTP enrollment used only for policy changes:
+
+```console
+sudo onyx policy init --account production-policy-admin
+```
+
+Store this enrollment in an authenticator controlled by the policy administrator, not by the protected automation identity. The policy itself is readable for inspection at `/etc/onyx/policy.json`, but only root can replace it.
 
 ## Protect a command
 
@@ -151,12 +210,12 @@ The initial policy blocks:
 
 These rules are intentionally small and auditable. They are not behavioral malware detection and cannot understand arbitrary interpreter code. Wrapper commands such as `sudo` and shell `-c` strings are therefore treated conservatively and may require approval even when the nested operation is harmless.
 
-### Add a site-specific rule
+### Manage site-specific rules
 
-Custom rules match an executable basename and require every supplied argument fragment to occur. Adding a rule can only increase enforcement; v0.1 deliberately provides no unauthenticated CLI command to remove or weaken one.
+Custom rules match an executable basename and require every supplied argument fragment to occur. Policy mutation requires both root privileges and the independent policy-administrator TOTP code.
 
 ```console
-onyx policy add \
+sudo onyx policy add \
   --id production-terraform \
   --executable terraform \
   --argument-contains apply \
@@ -166,9 +225,15 @@ onyx policy add \
 
 onyx policy list
 onyx check -- terraform apply production.tfplan
+
+sudo onyx policy remove --id production-terraform
 ```
 
-Rules are stored in the owner-only `policy.json`. Each `--argument-contains` value is a literal substring, not a regular expression. Directly editing or deleting the policy file is outside the protected CLI boundary and requires the same operating-system controls as the rest of Onyx state.
+Each mutation prompts for the policy-administrator code without terminal echo. Onyx does not provide a general-purpose editor: structured `add` and `remove` operations validate the complete policy, write it atomically, and append an administrator audit record.
+
+Rules are stored in `/etc/onyx/policy.json` as root-owned mode `0444` JSON with a SHA-256 companion file. On every `check` and `run`, Onyx verifies the directory, ownership, modes, regular-file type, size, schema, and digest. A missing or inconsistent initialized system policy fails closed. The digest detects inconsistency; root ownership is what prevents a normal user from replacing both files.
+
+For compatibility, installations without `/etc/onyx` continue to read the older user-owned `policy.json`. Run `sudo onyx policy init` to establish the protected boundary; after that, the system policy is authoritative. Rule values remain readable configuration rather than secrets, so do not put credentials in them. Each `--argument-contains` value is a literal substring, not a regular expression.
 
 ## Audit log
 
@@ -181,7 +246,7 @@ External collection is deliberately out of scope. Operators may forward the file
 For a root-owned installation, the repository includes a conservative example at [`ops/logrotate/onyx`](ops/logrotate/onyx): rotate at 10 MiB, retain seven generations, and compress older records. Review the path, owner, retention, and compliance requirements before installing it as `/etc/logrotate.d/onyx`.
 
 For deployment checks, monitoring, encrypted backup/restore, upgrade, rollback, authenticator loss, and incident handling, use the [operations runbook](docs/operations.md).
-Package maintainers should also use the [RPM repository runbook](docs/package-repository.md) for signing, publication, rotation, and rollback.
+Package maintainers should also use the [RPM repository runbook](docs/package-repository.md) and [APT repository runbook](docs/apt-repository.md) for signing, publication, rotation, and rollback.
 
 ## Exit codes
 
@@ -215,21 +280,23 @@ To uninstall:
 cargo uninstall onyx-guard
 # or, for an RPM installation:
 sudo dnf remove onyx
+# or, for an APT installation:
+sudo apt-get remove onyx
 ```
 
-After confirming that no audit retention requirement applies, an administrator may separately remove the known Onyx state directory. Package removal intentionally does not delete security logs or enrollment state.
+After confirming that no audit retention requirement applies, an administrator may separately remove the known user state directory and `/etc/onyx`. Package removal intentionally does not delete security logs, policy, or enrollment state.
 
 ## Security model
 
 Read [SECURITY.md](SECURITY.md) and [the architecture document](docs/architecture.md) before production use. Important boundaries:
 
 - commands not launched with `onyx run` are outside protection;
-- the same OS identity that owns writable state can replace or delete it;
+- the protected OS identity cannot alter initialized system-policy rules, but it still owns command events, permits, execution-approval state, and local audit logs;
 - root can bypass, modify, or remove this user-space guard;
 - local-only logs can be deleted by a sufficiently privileged attacker;
 - policy matching cannot detect every equivalent or obfuscated operation.
 
-Run automation under a dedicated constrained service account and keep ordinary workloads unprivileged. Do not treat v0.1 as a security boundary against that account itself; administrator-owned verification requires the future broker design.
+Run automation under a dedicated constrained service account and keep ordinary workloads unprivileged. System policy protects rule definitions from that account; containment of a fully compromised account still requires a privileged broker or another external enforcement boundary.
 
 ## Development
 

@@ -1,0 +1,29 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
+Origin: Onyx
+Label: Onyx
+Suite: stable
+Codename: stable
+Version: 1
+Architectures: amd64
+Components: main
+Description: Onyx packages for Debian and Ubuntu
+Date: Thu, 08 Oct 2026 06:01:51 +0000
+SHA256:
+ 7e3d9c2767d3554851353966d5c09d7af2b2232413fbb99036c1ab6b35ee7993              641 main/binary-amd64/Packages
+ 1255f9226d991bc65ed014e1d1e4c31dfcdb502b5abafba1a4ac30cadcc72dfb              467 main/binary-amd64/Packages.gz
+-----BEGIN PGP SIGNATURE-----
+
+iQGzBAEBCAAdFiEE6ePBI97fs+muofOpzS5hXbwyzwwFAmrHNC8ACgkQzS5hXbwy
+zwxEqQwA95K6aTOdJYjlAxNS5gy1ZjM1MCBFsPLbdv46Aha9eP1iYS/zYeZHsbij
+keEM3vg/zpCF2lULobS16P9/HQTDBHwzUYxTpZaZSmxFsuOLlyUEnJVvbILLNfol
+cVBYrda21UpHUINp1FU8hS8E0e9+jUonWdwYYCuGBM6q4MIBb84Qymycdg6ryuur
+BJraSa+8B8kO/FgIM6XAS6iMuee0FERDZqYNc2B+6U6wxIpkjFVN5N2hlCBAUkf/
+YONBv+oCmrKkN1PH3WTS6M70+iYZjN1kO4LtEWz05OyO0x5moAl6s+1YGQM77sgL
+oWBjfBDl0uaCup6HFZhCvEoapbFxTlywFDAskcZyEzl0QwzRkcA1nCQ7tGhYV0EJ
++IvZwnLmepGiyTKnniLnCosuKwl+Mk9EnY+9eoBa4nCTg72+BSMXK3q3MVLTNsus
+8Sj7dH2ia+wbcxeFQezXyyk5ZXyJbKA9M3eM3v3Gm0jqBNA1xq+H3feUuccrGT/9
+ouVx3Xhu
+=N/Py
+-----END PGP SIGNATURE-----

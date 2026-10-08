@@ -16,9 +16,9 @@
     <header class="hero">
       <nav>
         <a class="brand" href="./" aria-label="Onyx home">ONYX</a>
-        <div class="nav-links"><a href="./ja/guide.html" lang="ja" hreflang="ja">日本語</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div>
+        <div class="nav-links"><a href="./install.html">Install</a><a href="./ja/guide.html" lang="ja" hreflang="ja">日本語</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div>
       </nav>
-      <div class="docs-hero"><p class="eyebrow">Technical guide</p><h1>How Onyx works.</h1><p class="lead">A precise look at the decision point, one-time approval, local evidence, and the limits operators must preserve.</p></div>
+      <div class="docs-hero"><p class="eyebrow">Technical guide</p><h1>How Onyx works.</h1><p class="lead">Command evaluation, one-time approval, custom rules, and local audit records.</p></div>
     </header>
     <main class="docs">
       <section>
@@ -26,7 +26,7 @@
         <p>Onyx v0.1 is an <strong>explicit command wrapper</strong>. Automation or an operator invokes <code>onyx run -- &lt;command&gt;</code>. Onyx evaluates the argument vector before it creates the child process. It does not intercept commands that are launched outside this wrapper.</p>
         <div class="flow-diagram" aria-label="Onyx command execution flow">
           <div class="node"><strong>1. Request</strong><span><code>onyx run -- ...</code></span></div>
-          <div class="node"><strong>2. Evaluate</strong><span>Built-in and local additive rules</span></div>
+          <div class="node"><strong>2. Verify</strong><span>Root-owned system policy and digest</span></div>
           <div class="node"><strong>3. Decide</strong><span>Allow now or create a blocked event</span></div>
           <div class="node"><strong>4. Execute</strong><span>Consume any permit before process creation</span></div>
           <div class="node"><strong>5. Audit</strong><span>Append a redacted JSONL record</span></div>
@@ -52,16 +52,41 @@
           <div class="node"><strong>Permit</strong><span>Exact digest, 30-second lifetime</span></div>
           <div class="node"><strong>Consumed</strong><span>Removed before the child starts</span></div>
         </div>
-        <p>TOTP is a shared-secret mechanism. It provides delay when an actor lacks the enrolled authenticator, but it is not a physical-presence guarantee. Code running as the Onyx state owner, or root, can read the server-side seed. Hardware-backed asymmetric approval belongs to the planned privileged-broker design and is not claimed here.</p>
+        <p>TOTP requires the enrolled code before approval. It does not guarantee physical presence or protect the seed from the state owner or root. Hardware-backed approval is not included in v0.1.</p>
       </section>
       <section>
-        <h2>Policy and difficult-to-interpret commands</h2>
-        <p>The built-in policy covers a deliberately small set of high-risk patterns: destructive recursive deletion, filesystem formatting, raw device writes, shutdown, privilege wrappers, shell command strings, destructive <code>find</code>, root-wide permission changes, likely secret transfer, and decoded <code>eval</code>. Site rules can only add enforcement through the CLI.</p>
+        <h2>Add root-managed approval rules</h2>
+        <p>The built-in policy covers destructive deletion, filesystem formatting, raw device writes, shutdown, privilege wrappers, shell command strings, destructive <code>find</code>, root-wide permission changes, likely secret transfer, and decoded <code>eval</code>. Initialize the authoritative system policy, then add environment-specific rules:</p>
+        <pre><code>sudo onyx policy init --account production-policy-admin
+
+sudo onyx policy add \
+  --id production-terraform \
+  --executable terraform \
+  --argument-contains apply \
+  --argument-contains production \
+  --risk critical \
+  --reason "production infrastructure change"
+
+onyx policy list
+onyx check -- terraform apply production.tfplan
+
+sudo onyx policy remove --id production-terraform</code></pre>
+        <p>Policy mutation requires root and the independent policy-administrator TOTP. Every supplied argument fragment must match. Custom rules add approval requirements; they cannot disable built-in rules. v0.1 does not provide an absolute, unapprovable deny mode.</p>
+        <pre><code>{
+  "schema_version": 1,
+  "rules": [{
+    "id": "production-terraform",
+    "executable": "terraform",
+    "argument_contains": ["apply", "production"],
+    "risk": "critical",
+    "reason": "production infrastructure change"
+  }]
+}</code></pre>
         <p>Onyx is not a semantic malware analyzer. Shell strings, interpreters, aliases, encoded payloads, and equivalent system calls can hide intent. Conservative rules may require approval for harmless commands, while commands outside the wrapper remain invisible.</p>
       </section>
       <section>
         <h2>State and local evidence</h2>
-        <p>Root uses <code>/var/lib/onyx</code>; regular users use the XDG state directory. Directories are mode <code>0700</code> and sensitive files are mode <code>0600</code>. Symlinks and unexpected file types are rejected. JSON replacement uses a same-directory temporary file, <code>fsync</code>, rename, and parent-directory <code>fsync</code>.</p>
+        <p>Root uses <code>/var/lib/onyx</code>; regular users use the XDG state directory. Directories are mode <code>0700</code> and state files are mode <code>0600</code>. Symlinks and unexpected file types are rejected. JSON replacement uses a same-directory temporary file, <code>fsync</code>, rename, and parent-directory <code>fsync</code>.</p>
         <pre><code>onyx/
 ├── .lock
 ├── audit.jsonl
@@ -69,11 +94,16 @@
 ├── config.json
 ├── policy.json
 └── events/&lt;event-id&gt;.json</code></pre>
-        <p>Audit records contain timestamps, actions, event IDs, command digests, redacted summaries, matched rule IDs, and relevant exit status. They do not contain stdout, stderr, environment values, TOTP seeds, or submitted codes. Local evidence can still be changed by root; forward it with an existing collector when tamper-resistant retention is required.</p>
+        <pre><code>/etc/onyx/
+├── policy.json        root:root 0444
+├── policy.sha256      root:root 0444
+└── admin/             root-only policy TOTP and audit</code></pre>
+        <p>The readable system policy contains rule IDs, executable names, argument fragments, risk levels, and reasons; do not place credentials in rule fields. It is validated before every check or run. Missing pairs, unsafe type, owner or mode, invalid schema, and digest mismatch stop the operation. The digest detects inconsistency; operating-system ownership prevents a normal user from replacing both files.</p>
+        <p>Audit records contain timestamps, actions, event IDs, command digests, redacted summaries, matched rule IDs, and relevant exit status. They do not contain stdout, stderr, environment values, TOTP seeds, or submitted codes.</p>
       </section>
       <section>
         <h2>Deployment flow</h2>
-        <ol><li>Install the signed RPM and initialize Onyx as the constrained identity that will invoke it.</li><li>Verify clock synchronization, permissions, a harmless run, and a non-executing blocked check.</li><li>Change the intended automation entry point to <code>onyx run -- ...</code>.</li><li>Monitor repeated blocks, approval failures, disk capacity, clock health, and wrapper bypass paths.</li><li>Keep a separately controlled recovery path and preserve state before incident work.</li></ol>
+        <ol><li>Install a signed RPM or Debian package, or use another documented source path, and initialize execution state as the constrained identity.</li><li>Run <code>sudo onyx policy init</code> and enroll the separate administrator authenticator.</li><li>Verify clock synchronization, permissions, policy listing, a harmless run, and a non-executing blocked check.</li><li>Change the intended automation entry point to <code>onyx run -- ...</code>.</li><li>Monitor failures and preserve both state trees before incident work.</li></ol>
         <p>Read the <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">operations runbook</a>, <a href="https://github.com/ttr1563/onyx/blob/main/docs/architecture.md">architecture</a>, and <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">security policy</a> before production use.</p>
       </section>
     </main>

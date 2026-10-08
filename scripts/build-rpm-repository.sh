@@ -78,7 +78,7 @@ done
 metadata_root="$temporary/repository"
 mkdir -p "$metadata_root/Packages"
 cp -p "$package_dir"/*.rpm "$metadata_root/Packages/"
-createrepo_c --checksum sha256 "$metadata_root"
+createrepo_c --checksum sha256 --workers 1 "$metadata_root"
 GNUPGHOME="$gpg_home" gpg "${gpg_arguments[@]}" \
   --armor --detach-sign "$metadata_root/repodata/repomd.xml"
 

@@ -20,6 +20,10 @@ pub enum OnyxError {
     AuthenticationLocked(i64),
     #[error("invalid authenticator code")]
     InvalidCode,
+    #[error("this operation requires root; run it with sudo")]
+    RootRequired,
+    #[error("system policy is not initialized; run `sudo onyx policy init` first")]
+    SystemPolicyNotInitialized,
     #[error("command is required after `--`")]
     MissingCommand,
     #[error("unsafe state path: {0}")]

@@ -1,0 +1,6 @@
+a4298694f5b9af09cf401616a95f50acec94a6e1af339298a07ab1b80590a57c  dists/stable/InRelease
+fcf836dde7ff1613624f20434ea80e9f5c6fbc78ada700775d43a33bcb5ceeba  dists/stable/Release
+29485d35b3cd78dcd4e43882d74b0dbec08a2925978f90f361f1664275955c05  dists/stable/Release.gpg
+7e3d9c2767d3554851353966d5c09d7af2b2232413fbb99036c1ab6b35ee7993  dists/stable/main/binary-amd64/Packages
+1255f9226d991bc65ed014e1d1e4c31dfcdb502b5abafba1a4ac30cadcc72dfb  dists/stable/main/binary-amd64/Packages.gz
+2a0ec0a0b94bb71885f9a614c863d07c070eda108e6490642b5c5312d3782bb8  pool/main/o/onyx/onyx_0.1.2-1_amd64.deb

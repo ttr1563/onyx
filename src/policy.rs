@@ -70,7 +70,16 @@ impl PolicyFile {
         Ok(())
     }
 
-    fn validate(&self) -> Result<()> {
+    pub fn remove(&mut self, id: &str) -> Result<CustomRule> {
+        let index = self
+            .rules
+            .iter()
+            .position(|rule| rule.id == id)
+            .ok_or_else(|| OnyxError::InvalidState(format!("policy rule not found: {id}")))?;
+        Ok(self.rules.remove(index))
+    }
+
+    pub(crate) fn validate(&self) -> Result<()> {
         if self.schema_version != 1 {
             return Err(OnyxError::InvalidState(format!(
                 "unsupported policy schema version: {}",
@@ -450,5 +459,22 @@ mod tests {
             reason: "test".to_owned(),
         };
         assert!(validate_rule(&rule).is_err());
+    }
+
+    #[test]
+    fn removes_custom_rule_by_id() {
+        let mut policy = PolicyFile::default();
+        let rule = CustomRule {
+            id: "production-terraform".to_owned(),
+            executable: "terraform".to_owned(),
+            argument_contains: vec!["apply".to_owned()],
+            risk: RiskLevel::Critical,
+            reason: "production infrastructure change".to_owned(),
+        };
+        policy.add(rule.clone()).unwrap();
+
+        assert_eq!(policy.remove(&rule.id).unwrap().id, rule.id);
+        assert!(policy.rules.is_empty());
+        assert!(policy.remove("missing-rule").is_err());
     }
 }

@@ -16,8 +16,10 @@ Onyx v0.1 is an explicit command wrapper. It reduces mistakes and constrains coo
 
 - execution that bypasses `onyx run`;
 - an attacker with root or equivalent host control;
-- modification by the operating-system identity that owns the Onyx state directory;
+- modification of that identity's command events, permits, execution-approval state, or local audit records;
 - deletion of local-only audit records by a privileged attacker;
 - all semantic equivalents of a dangerous command.
 
-TOTP uses a shared secret stored by the verifier. It delays an attacker who lacks the enrolled authenticator, but the operating-system identity that owns Onyx state can read that seed and generate valid codes. A future administrator-owned broker with hardware-backed signing will keep only public verification material on the protected host.
+An initialized system policy is held at `/etc/onyx` as root-owned read-only files. Policy `add` and `remove` require effective UID 0 and a separate administrator TOTP. Missing files, unsafe ownership or modes, symbolic links, invalid schema, and digest mismatches fail closed. SHA-256 is an integrity consistency check, not a defense against root, which can replace the policy and digest together.
+
+Command execution approval uses a different TOTP seed in the protected identity's mutable state. TOTP is a shared-secret mechanism: code running as that identity can read the execution-approval seed and modify its events or permits. Root-owned policy protects rule definitions, but does not turn the wrapper into containment for a fully compromised identity. A privileged broker with asymmetric, hardware-backed approval remains a possible stronger design.

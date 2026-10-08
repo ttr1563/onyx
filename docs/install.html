@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="description" content="Install Onyx on Amazon Linux, Debian, Ubuntu, macOS, or Windows through WSL 2.">
+    <link rel="canonical" href="https://ttr1563.github.io/onyx/install.html">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/install.html">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/install.html">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/install.html">
+    <link rel="stylesheet" href="./styles.css">
+    <title>Install Onyx</title>
+  </head>
+  <body>
+    <header class="hero">
+      <nav><a class="brand" href="./" aria-label="Onyx home">ONYX</a><div class="nav-links"><a href="./guide.html">Guide</a><a href="./ja/install.html" lang="ja" hreflang="ja">日本語</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div></nav>
+      <div class="docs-hero"><p class="eyebrow">Installation</p><h1>Choose a verified path.</h1><p class="lead">Signed Linux repositories are the operational default. Homebrew and tag-pinned source installation are available when a native package is not.</p></div>
+    </header>
+    <main class="docs">
+      <section>
+        <h2>Support matrix</h2>
+        <table class="state-table"><thead><tr><th>Environment</th><th>Install path</th><th>Protection scope</th></tr></thead><tbody>
+          <tr><td>Amazon Linux 2023 x86_64</td><td>Signed DNF repository</td><td>Supported Linux target</td></tr>
+          <tr><td>Debian 12 / Ubuntu 22.04+ amd64</td><td>Signed APT repository</td><td>Supported Linux target</td></tr>
+          <tr><td>Other Linux</td><td>Homebrew or release-tag Cargo install</td><td>Buildable; distribution verification varies</td></tr>
+          <tr><td>macOS</td><td>Homebrew or Cargo</td><td>Build path only; native command protection is unverified</td></tr>
+          <tr><td>Windows 10/11 x64</td><td>WSL 2, then Linux instructions</td><td>WSL commands only; no PowerShell or native Windows interception</td></tr>
+        </tbody></table>
+        <p class="callout"><strong>Every platform keeps the same boundary:</strong> only commands explicitly launched through <code>onyx run -- ...</code> are evaluated.</p>
+      </section>
+      <section>
+        <h2>Amazon Linux 2023</h2>
+        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
+sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
+sudo dnf install onyx</code></pre>
+        <p>Expected key fingerprint: <code>E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C</code>. Upgrade with <code>sudo dnf upgrade onyx</code>.</p>
+      </section>
+      <section>
+        <h2>Debian 12 and Ubuntu 22.04 or later</h2>
+        <p>Download the key as a regular user, inspect its fingerprint, and only then install the key and scoped deb822 source:</p>
+        <pre><code>curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.asc
+gpg --show-keys --with-fingerprint onyx.asc
+# Expected: E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C
+sudo install -D -m0644 onyx.asc /etc/apt/keyrings/onyx.asc
+
+curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.sources
+sudo install -m0644 onyx.sources /etc/apt/sources.list.d/onyx.sources
+rm onyx.asc onyx.sources
+
+sudo apt-get update
+sudo apt-get install onyx</code></pre>
+        <p>Upgrade with <code>sudo apt-get update &amp;&amp; sudo apt-get install --only-upgrade onyx</code>. The source file uses <code>Signed-By</code>; the key does not become a global APT trust anchor.</p>
+      </section>
+      <section>
+        <h2>Homebrew</h2>
+        <pre><code>brew tap ttr1563/onyx https://github.com/ttr1563/onyx.git
+brew install ttr1563/onyx/onyx</code></pre>
+        <p>Linux is the verified protection target. The formula can build on macOS, but native macOS command protection is not claimed.</p>
+      </section>
+      <section>
+        <h2>Install from Git</h2>
+        <p>Use an immutable release tag and the committed lockfile:</p>
+        <pre><code>cargo install \
+  --git https://github.com/ttr1563/onyx.git \
+  --tag v0.1.2 \
+  --locked</code></pre>
+        <p>Rust 1.91 or later and a platform C toolchain are required. For development, clone the same tag and run <code>cargo install --path . --locked</code>. Do not use a mutable branch for repeatable server deployment.</p>
+      </section>
+      <section>
+        <h2>Windows x64 through WSL 2</h2>
+        <p>Open PowerShell as Administrator, install WSL, and restart when prompted:</p>
+        <pre><code>wsl --install</code></pre>
+        <p>Open the Ubuntu terminal and use the APT procedure above. Initialize and run Onyx inside that Linux terminal. See Microsoft's <a href="https://learn.microsoft.com/windows/wsl/install">WSL installation guide</a> for version requirements. Native Windows processes, PowerShell, Command Prompt, and Windows services are not supported.</p>
+      </section>
+      <section>
+        <h2>Verify and remove</h2>
+        <pre><code>onyx --version
+onyx check -- rm -rf /example
+# Expected: blocked result and exit code 77</code></pre>
+        <p>Use <code>sudo dnf remove onyx</code>, <code>sudo apt-get remove onyx</code>, or <code>cargo uninstall onyx-guard</code> for the matching install path. Package removal deliberately leaves <code>/var/lib/onyx</code> execution state and <code>/etc/onyx</code> policy, administrator authentication state, and audit evidence. Review retention and incident requirements before deleting either path separately.</p>
+      </section>
+    </main>
+    <footer><p>Onyx is open source under the MIT License.</p><a href="./">Back to Onyx</a></footer>
+  </body>
+</html>

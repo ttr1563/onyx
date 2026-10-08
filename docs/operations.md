@@ -6,11 +6,11 @@ This runbook covers the explicit-wrapper architecture in Onyx v0.1. It does not 
 
 1. Choose a dedicated, least-privileged operating-system identity for protected automation.
 2. Confirm that the host clock is synchronized. TOTP approval depends on accurate time.
-3. Decide who may access the state directory and the authenticator enrollment record.
+3. Decide who controls the execution authenticator and the separate policy-administrator authenticator.
 4. Decide how long local audit records must be retained and whether an existing log collector will forward them.
 5. Keep a separate administrative access path for recovery. Onyx does not provide an unauthenticated reset command.
 
-The identity running Onyx must own its state in v0.1. Treat TOTP as protection against mistakes and actors that cannot read that state, not as a boundary against the state owner or root.
+The identity running Onyx owns its execution state. The system policy is separately root-owned, but the wrapper still does not contain a fully compromised state owner or root.
 
 ## Initial deployment
 
@@ -18,6 +18,7 @@ Install the binary, then initialize Onyx once as the identity that will invoke i
 
 ```console
 onyx init --account production-web-01
+sudo onyx policy init --account production-policy-admin
 onyx status
 onyx check -- rm -rf /example
 onyx run -- /usr/bin/true
@@ -32,6 +33,17 @@ Verify all of the following before putting Onyx in an automation path:
 - the harmless command exits successfully;
 - the audit log contains `initialized`, `allowed`, and `completed` records;
 - state directories have mode `0700` and state files have mode `0600`.
+- `/etc/onyx` is root-owned mode `0755`, its policy and digest are root-owned mode `0444`, and `/etc/onyx/admin` is mode `0700`.
+
+Use different authenticator entries for command execution and policy administration. Verify policy management from an administrative console:
+
+```console
+sudo onyx policy add --id deployment --executable deploy --argument-contains production --reason "production deployment"
+onyx policy list
+sudo onyx policy remove --id deployment
+```
+
+Both mutations must prompt for the policy-administrator code. Do not grant the protected workload unrestricted `sudo`; the TOTP prompt is an additional condition, not a replacement for operating-system privilege policy.
 
 Use absolute executable paths in production automation when practical. Onyx binds approval to the exact argument bytes, but executable lookup still follows the invoking process environment when a basename is supplied.
 
@@ -62,6 +74,7 @@ Also monitor:
 - free disk space and log rotation;
 - unexpected `approval_failed`, `execution_failed`, or repeated `blocked` records;
 - owner and mode changes under the state directory;
+- owner, mode, completeness, and digest failures under `/etc/onyx`;
 - automation paths that invoke commands without `onyx run --`.
 
 An audit write failure before execution is fail-closed. A completion-record failure cannot reverse a child command that already finished, so alert on write errors rather than assuming every completed operation has a final record.
@@ -70,7 +83,7 @@ An audit write failure before execution is fail-closed. A completion-record fail
 
 The state directory contains the TOTP seed and must be treated as a secret. If recovery policy requires a backup, encrypt it with an independently controlled key and restrict access more tightly than the protected workload identity.
 
-A restore must preserve the complete state directory as one consistency unit. Restore it while no Onyx command or approval is running, then restore the original owner and the required `0700` directory / `0600` file modes. Run `onyx status` and a harmless command afterward. Do not merge individual event or authentication-state files from different backup times.
+A restore must preserve each state directory as one consistency unit. Restore while no Onyx command, approval, or policy mutation is running. Preserve the user-state owner and `0700`/`0600` modes. Restore `/etc/onyx` only as root with `0755` on its top directory, `0444` on both policy files, and `0700`/`0600` within `admin`. Do not restore only one of `policy.json` and `policy.sha256`. Run `onyx status`, `onyx policy list`, and a harmless command afterward. Do not merge event or authentication-state files from different backup times.
 
 If the backup may have been disclosed, do not restore its TOTP enrollment. Preserve required audit evidence, initialize a new state directory, and enroll a new authenticator instead.
 
@@ -95,7 +108,7 @@ If the state owner or root may be compromised:
 1. stop relying on Onyx as an authorization boundary;
 2. isolate the affected workload using the host or infrastructure control plane;
 3. preserve logs according to incident-response policy;
-4. rotate credentials exposed to that identity, including the Onyx TOTP seed;
+4. rotate credentials exposed to that identity, including the execution TOTP seed; if root may be compromised, also replace the policy-administrator enrollment and validate the complete policy;
 5. rebuild or recover the host from a trusted point before re-enrollment.
 
 Local JSONL evidence can be changed or deleted by a sufficiently privileged attacker. Use an existing remote log pipeline when tamper-resistant retention is required.
