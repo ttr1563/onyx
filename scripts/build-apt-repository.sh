@@ -17,7 +17,7 @@ key_file="${ONYX_GPG_PUBLIC_KEY:-packaging/rpm/RPM-GPG-KEY-ONYX}"
 signing_key="${ONYX_GPG_KEY_ID:-}"
 gpg_home="${ONYX_GPG_HOME:-}"
 passphrase_file="${ONYX_GPG_PASSPHRASE_FILE:-}"
-for command in ar awk cp date find gzip gpg install md5sum realpath sha256sum sort stat tail tar xargs; do
+for command in ar awk cp date find gzip gpg install md5sum realpath sha256sum sort stat tar xargs; do
   command -v "$command" >/dev/null || {
     echo "required command not found: $command" >&2
     exit 1
@@ -33,34 +33,40 @@ if [[ -z "$signing_key" || -z "$gpg_home" ]]; then
 fi
 
 pool="$output_root/pool/main/o/onyx"
-package="$(find "$pool" -maxdepth 1 -type f -name 'onyx_[0-9]*_amd64.deb' -print | sort -V | tail -n 1)"
-if [[ -z "$package" ]]; then
+mapfile -t packages < <(find "$pool" -maxdepth 1 -type f -name 'onyx_[0-9]*_amd64.deb' -print | sort -V)
+if [[ "${#packages[@]}" -eq 0 ]]; then
   echo "Onyx Debian package not found under $pool" >&2
   exit 1
 fi
+latest_package="${packages[${#packages[@]} - 1]}"
 
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 metadata_root="$temporary/apt"
 binary_dir="$metadata_root/dists/stable/main/binary-amd64"
 mkdir -p "$binary_dir"
-relative_package="${package#"$output_root"/}"
-
-control_dir="$temporary/control"
-mkdir -p "$control_dir"
-(
-  cd "$control_dir"
-  ar x "$package" control.tar.gz
-  tar -xzf control.tar.gz control
-)
-cat "$control_dir/control" > "$binary_dir/Packages"
-cat >> "$binary_dir/Packages" <<EOF
+: > "$binary_dir/Packages"
+for index in "${!packages[@]}"; do
+  package="${packages[$index]}"
+  relative_package="${package#"$output_root"/}"
+  control_dir="$temporary/control-$index"
+  mkdir -p "$control_dir"
+  (
+    cd "$control_dir"
+    ar x "$package" control.tar.gz
+    tar -xzf control.tar.gz control
+  )
+  if [[ "$index" -gt 0 ]]; then
+    printf '\n' >> "$binary_dir/Packages"
+  fi
+  cat "$control_dir/control" >> "$binary_dir/Packages"
+  cat >> "$binary_dir/Packages" <<EOF
 Filename: ${relative_package}
 Size: $(stat -c %s "$package")
 MD5sum: $(md5sum "$package" | awk '{ print $1 }')
 SHA256: $(sha256sum "$package" | awk '{ print $1 }')
-
 EOF
+done
 gzip -9 -n -c "$binary_dir/Packages" > "$binary_dir/Packages.gz"
 
 release="$metadata_root/dists/stable/Release"
@@ -109,4 +115,4 @@ install -m0644 packaging/deb/onyx.sources "$output_root/onyx.sources"
 GNUPGHOME="$gpg_home" gpg "${gpg_arguments[@]}" \
   --armor --detach-sign --output "$output_root/SHA256SUMS.asc" "$output_root/SHA256SUMS"
 
-sha256sum "$package" "$output_root/dists/stable/InRelease"
+sha256sum "$latest_package" "$output_root/dists/stable/InRelease"

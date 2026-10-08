@@ -13,7 +13,7 @@ case "$repository_path" in
     ;;
 esac
 
-for command in ar awk cmp find gpg gzip realpath sha256sum sort stat tail tar; do
+for command in ar awk cmp find gpg grep gzip realpath sha256sum sort stat tar; do
   command -v "$command" >/dev/null || {
     echo "required command not found: $command" >&2
     exit 1
@@ -48,12 +48,17 @@ GNUPGHOME="$temporary" gpg --batch --verify \
 gzip -cd "$repository_path/dists/stable/main/binary-amd64/Packages.gz" \
   | cmp - "$repository_path/dists/stable/main/binary-amd64/Packages"
 
-package="$(find "$repository_path/pool/main/o/onyx" -maxdepth 1 -type f -name 'onyx_*_amd64.deb' -print | sort -V | tail -n 1)"
-test -n "$package"
-expected_hash="$(awk '/^SHA256: / { print $2; exit }' "$repository_path/dists/stable/main/binary-amd64/Packages")"
-expected_size="$(awk '/^Size: / { print $2; exit }' "$repository_path/dists/stable/main/binary-amd64/Packages")"
-test "$(sha256sum "$package" | awk '{ print $1 }')" = "$expected_hash"
-test "$(stat -c %s "$package")" = "$expected_size"
+mapfile -t packages < <(find "$repository_path/pool/main/o/onyx" -maxdepth 1 -type f -name 'onyx_*_amd64.deb' -print | sort -V)
+test "${#packages[@]}" -gt 0
+test "$(grep -Fxc 'Package: onyx' "$repository_path/dists/stable/main/binary-amd64/Packages")" -eq "${#packages[@]}"
+for package in "${packages[@]}"; do
+  relative_package="${package#"$repository_path"/}"
+  grep -Fqx "Filename: $relative_package" "$repository_path/dists/stable/main/binary-amd64/Packages"
+  grep -Fqx "Size: $(stat -c %s "$package")" "$repository_path/dists/stable/main/binary-amd64/Packages"
+  grep -Fqx "SHA256: $(sha256sum "$package" | awk '{ print $1 }')" "$repository_path/dists/stable/main/binary-amd64/Packages"
+done
+
+package="${packages[${#packages[@]} - 1]}"
 
 members="$(ar t "$package")"
 test "$members" = $'debian-binary\ncontrol.tar.gz\ndata.tar.gz'

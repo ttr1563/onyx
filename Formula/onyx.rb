@@ -2,7 +2,7 @@ class Onyx < Formula
   desc "Lightweight command guard for Linux servers"
   homepage "https://ttr1563.github.io/onyx/"
   url "https://github.com/ttr1563/onyx/releases/download/v0.1.2/onyx-0.1.2.tar.gz"
-  sha256 "00a181a391af47b1560621cf01ebebcda9c1100b2f1f39f0ac0ff03c94d180c4"
+  sha256 "a3c5fc819f8606f03bf0a89f79c37c114410463233634ad243357e873630e1fc"
   license "MIT"
 
   depends_on "rust" => :build

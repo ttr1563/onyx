@@ -90,7 +90,7 @@ package="$output_root/onyx_${version}-1_amd64.deb"
 rm -f "$package"
 (
   cd "$temporary"
-  ar rcs "$package" debian-binary control.tar.gz data.tar.gz
+  ar rcsD "$package" debian-binary control.tar.gz data.tar.gz
 )
 
 ar t "$package"

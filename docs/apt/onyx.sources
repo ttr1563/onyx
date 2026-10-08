@@ -1,0 +1,6 @@
+Types: deb
+URIs: https://ttr1563.github.io/onyx/apt
+Suites: stable
+Components: main
+Architectures: amd64
+Signed-By: /etc/apt/keyrings/onyx.asc
