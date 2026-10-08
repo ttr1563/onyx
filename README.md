@@ -29,6 +29,24 @@ macOS and Windows command protection, OpenSSH/FIDO security keys, eBPF enforceme
 
 ## Install
 
+### Amazon Linux 2023 with DNF
+
+Import the dedicated Onyx package-signing key and install the repository configuration once:
+
+```console
+sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
+sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
+```
+
+The signing-key fingerprint is `E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C`. Verify it before trusting the key. The release RPM installs only the repository definition and public key. Inspect its contents before installation when required by local policy. Install and upgrade Onyx with:
+
+```console
+sudo dnf install onyx
+sudo dnf upgrade onyx
+```
+
+The initial repository publishes an `x86_64` package built and tested on Amazon Linux 2023. Other RPM distributions and `aarch64` are not yet verified. Package removal leaves `/var/lib/onyx` state and audit evidence intact; remove retained data only after reviewing incident and retention requirements.
+
 ### Homebrew on Linux or macOS
 
 ```console
@@ -163,6 +181,7 @@ External collection is deliberately out of scope. Operators may forward the file
 For a root-owned installation, the repository includes a conservative example at [`ops/logrotate/onyx`](ops/logrotate/onyx): rotate at 10 MiB, retain seven generations, and compress older records. Review the path, owner, retention, and compliance requirements before installing it as `/etc/logrotate.d/onyx`.
 
 For deployment checks, monitoring, encrypted backup/restore, upgrade, rollback, authenticator loss, and incident handling, use the [operations runbook](docs/operations.md).
+Package maintainers should also use the [RPM repository runbook](docs/package-repository.md) for signing, publication, rotation, and rollback.
 
 ## Exit codes
 
@@ -194,6 +213,8 @@ To uninstall:
 
 ```console
 cargo uninstall onyx-guard
+# or, for an RPM installation:
+sudo dnf remove onyx
 ```
 
 After confirming that no audit retention requirement applies, an administrator may separately remove the known Onyx state directory. Package removal intentionally does not delete security logs or enrollment state.
