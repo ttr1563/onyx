@@ -1,86 +1,49 @@
 <!doctype html>
 <html lang="ja">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex,nofollow">
-    <meta name="description" content="Amazon Linux、Debian、Ubuntu、macOS、WindowsのWSL 2へOnyxを導入する方法。">
-    <link rel="canonical" href="https://ttr1563.github.io/onyx/ja/install.html">
-    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/install.html">
-    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/install.html">
-    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/install.html">
-    <link rel="stylesheet" href="../styles.css">
-    <title>Onyxの導入</title>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><meta name="description" content="強制保護版OsmanthusをLinuxへbuild・導入する方法。">
+    <link rel="canonical" href="https://ttr1563.github.io/osmanthus-shell/ja/install.html"><link rel="alternate" hreflang="en" href="https://ttr1563.github.io/osmanthus-shell/install.html"><link rel="stylesheet" href="../styles.css">
+    <title>Osmanthusの導入</title>
   </head>
   <body>
-    <header class="hero">
-      <nav><a class="brand" href="./" aria-label="Onyxホーム">ONYX</a><div class="nav-links"><a href="./guide.html">技術ガイド</a><a href="../install.html" lang="en" hreflang="en">English</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div></nav>
-      <div class="docs-hero"><p class="eyebrow">導入</p><h1>検証済みの経路を選ぶ。</h1><p class="lead">運用環境では署名付きLinuxリポジトリを基本とし、native packageがない環境ではHomebrewまたは固定したrelease tagを利用します。</p></div>
-    </header>
+    <header class="hero"><nav><a class="brand" href="./">OSMANTHUS</a><div class="nav-links"><a href="./guide.html">技術ガイド</a><a href="../install.html" lang="en">English</a><a href="https://github.com/ttr1563/osmanthus-shell">GitHub</a></div></nav><div class="docs-hero"><p class="eyebrow">導入</p><h1>強制保護一式を導入する。</h1><p class="lead">daemon、BPF program、監査shell、systemd unit、CLIを一つの運用単位として扱います。</p></div></header>
     <main class="docs">
-      <section>
-        <h2>対応表</h2>
-        <table class="state-table"><thead><tr><th>環境</th><th>導入方法</th><th>保護範囲</th></tr></thead><tbody>
-          <tr><td>Amazon Linux 2023 x86_64</td><td>署名付きDNF repository</td><td>対応済みLinux target</td></tr>
-          <tr><td>Debian 12 / Ubuntu 22.04以降 amd64</td><td>署名付きAPT repository</td><td>対応済みLinux target</td></tr>
-          <tr><td>その他のLinux</td><td>Homebrewまたはrelease tag指定Cargo</td><td>build可能、distributionごとの検証状況は異なる</td></tr>
-          <tr><td>macOS</td><td>HomebrewまたはCargo</td><td>build経路のみ。macOS native保護は未検証</td></tr>
-          <tr><td>Windows 10/11 x64</td><td>WSL 2導入後にLinux手順</td><td>WSL内のみ。PowerShellとWindows processは対象外</td></tr>
-        </tbody></table>
-        <p class="callout"><strong>全環境で共通の境界：</strong><code>onyx run -- ...</code>から明示的に起動したコマンドだけを判定します。</p>
-      </section>
-      <section>
-        <h2>Amazon Linux 2023</h2>
-        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
-sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
-sudo dnf install onyx</code></pre>
-        <p>想定fingerprintは<code>E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C</code>です。更新は<code>sudo dnf upgrade onyx</code>です。</p>
-      </section>
-      <section>
-        <h2>Debian 12・Ubuntu 22.04以降</h2>
-        <p>一般ユーザーで公開鍵を取得してfingerprintを確認した後、鍵と適用範囲を限定したdeb822 sourceを配置します。</p>
-        <pre><code>curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.asc
-gpg --show-keys --with-fingerprint onyx.asc
-# Expected: E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C
-sudo install -D -m0644 onyx.asc /etc/apt/keyrings/onyx.asc
+      <section><h2>公開状況</h2><p class="callout"><strong>現時点では未releaseです：</strong>公開済みOnyx v0.1.3のDNF・APT・Homebrew・Git tagは旧明示wrapper製品です。Osmanthus packageではなく、この強制backendを含みません。</p><p>以下は開発branchを評価用にbuildする手順です。新versionと署名済みrepositoryは、package単位の受入確認とrelease承認後に案内します。</p></section>
+      <section><h2>対応状況</h2><table class="state-table"><thead><tr><th>環境</th><th>現在の導入経路</th><th>状態</th></tr></thead><tbody><tr><td>Amazon Linux 2023 x86_64</td><td>source build・local RPM build</td><td>kernel smokeとpackage生成を確認済み</td></tr><tr><td>Debian 12 / Ubuntu 22.04+ amd64</td><td>source build・local deb build</td><td>package生成済み。導入後の統合testはrelease gate</td></tr><tr><td>その他Linux</td><td>source build</td><td>BTF、active BPF LSM、bpffs、systemdが必要</td></tr><tr><td>macOS</td><td>強制保護版なし</td><td>native enforcementは延期</td></tr><tr><td>Windows Server</td><td>native版なし</td><td>backend・native testとも未実装</td></tr><tr><td>WSL 2</td><td>WSL内でLinux build</td><td>Windows process・serviceは保護しない</td></tr></tbody></table></section>
+      <section><h2>Linux前提条件</h2><pre><code>test -r /sys/kernel/btf/vmlinux
+grep -qw bpf /sys/kernel/security/lsm
+mountpoint /sys/fs/bpf
+systemctl --version
+sudo bpftool feature probe kernel | grep -A200 'program type lsm' | grep -w bpf_loop</code></pre><p>buildにはRust 1.91以降、clang/LLVM、libelf、zlib、libbpf header、C toolchainも必要です。完成packageはBPF objectを内包し、runtimeではclangを必要としません。</p></section>
+      <section><h2>Gitからbuild</h2><pre><code>git clone https://github.com/ttr1563/osmanthus-shell.git
+cd osmanthus-shell
+git fetch origin
+git checkout feature/enforced-shell-monitoring
+cargo build --release --locked
 
-curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.sources
-sudo install -m0644 onyx.sources /etc/apt/sources.list.d/onyx.sources
-rm onyx.asc onyx.sources
+sudo install -m0755 target/release/osmanthus /usr/bin/osmanthus
+sudo install -m0755 target/release/osmanthusd /usr/bin/osmanthusd
+sudo install -m0755 target/release/osmanthus-shell /usr/bin/osmanthus-shell
+sudo install -m0644 ops/systemd/osmanthusd.service /usr/lib/systemd/system/osmanthusd.service
+sudo install -m0644 ops/logrotate/osmanthus /etc/logrotate.d/osmanthus
+sudo install -D -m0644 ops/ssm/osmanthus-session.json /usr/share/osmanthus/ssm/osmanthus-session.json</code></pre><p>可変な開発branchは評価専用です。本番導入ではimmutableな署名済みrelease artifactを使用します。</p></section>
+      <section><h2>local packageを生成</h2><pre><code>scripts/build-rpm.sh 0.1.3 dist/rpm
+scripts/build-deb.sh 0.1.3 dist/deb</code></pre><p>この操作はlocal artifactを作るだけで、repositoryへの公開や署名は行いません。開発packageは公開v0.1.3と同じmanifest versionのため、公開物を上書きしたり同じreleaseとして配布してはいけません。versionはrelease時に決定します。</p></section>
+      <section><h2>初期化と確認</h2><pre><code>sudo osmanthus policy init --account production-policy-admin
+sudo systemctl daemon-reload
+sudo systemctl enable --now osmanthusd
+osmanthus daemon status
 
-sudo apt-get update
-sudo apt-get install onyx</code></pre>
-        <p>更新は<code>sudo apt-get update &amp;&amp; sudo apt-get install --only-upgrade onyx</code>です。sourceの<code>Signed-By</code>により、公開鍵をAPT全体のtrust anchorにはしません。</p>
-      </section>
-      <section>
-        <h2>Homebrew</h2>
-        <pre><code>brew tap ttr1563/onyx https://github.com/ttr1563/onyx.git
-brew install ttr1563/onyx/onyx</code></pre>
-        <p>検証済みの保護対象はLinuxです。FormulaはmacOSでbuild可能な想定ですが、macOS nativeのコマンド保護は現行版の対応範囲ではありません。</p>
-      </section>
-      <section>
-        <h2>Gitから導入</h2>
-        <p>変更されないrelease tagとlockfileを指定します。</p>
-        <pre><code>cargo install \
-  --git https://github.com/ttr1563/onyx.git \
-  --tag v0.1.3 \
-  --locked</code></pre>
-        <p>Rust 1.91以降とplatformのC toolchainが必要です。開発時は同じtagをcloneし、<code>cargo install --path . --locked</code>を実行します。再現可能なserver導入に可変branchは使用しません。</p>
-      </section>
-      <section>
-        <h2>Windows x64はWSL 2経由</h2>
-        <p>管理者PowerShellでWSLを導入し、求められた場合は再起動します。</p>
-        <pre><code>wsl --install</code></pre>
-        <p>導入されたUbuntu terminalを開き、上記APT手順を実行します。Onyxの初期化と保護対象commandもLinux terminal内で実行してください。version要件はMicrosoftの<a href="https://learn.microsoft.com/windows/wsl/install">WSL導入ガイド</a>を参照してください。PowerShell、Command Prompt、Windows service、WSL外のnative <code>.exe</code>は対象外です。</p>
-      </section>
-      <section>
-        <h2>確認と削除</h2>
-        <pre><code>onyx --version
-onyx check -- rm -rf /example
-# 想定結果: 遮断され、終了コード77</code></pre>
-        <p>導入経路に応じて<code>sudo dnf remove onyx</code>、<code>sudo apt-get remove onyx</code>、または<code>cargo uninstall onyx-guard</code>を使います。package削除後も<code>/var/lib/onyx</code>の実行状態と、<code>/etc/onyx</code>のpolicy・管理認証状態・監査証跡は意図的に残します。保持・incident要件を確認してから、必要な場合だけ別操作で削除してください。</p>
-      </section>
+sudo osmanthus policy protect add /srv/production \
+  --action delete --action rename --action truncate
+sudo osmanthus policy monitor add 1001 --shell /bin/bash</code></pre><p>最初の境界testは使い捨てdirectoryで行い、login shell変更前にconsole・復旧経路を確保します。通常のfilesystem保護に<code>osmanthus run</code>は不要です。</p></section>
+      <section><h2>認証器rotation</h2><p>現在のTOTP認証器を利用できる間に<code>sudo osmanthus policy auth rotate</code>を実行すると、新しいQR/URIを発行できます。旧secretは直ちに無効になります。登録済み認証器をすべて失った場合は、検証済みのroot専用backupから復元します。fileの直接編集は復旧手順にしません。</p></section>
+      <section><h2>remote接続</h2><p>登録accountのOpenSSH・local loginは<code>osmanthus-shell</code>を通ります。AWS SSMはlogin shellを迂回できるため、repositoryの<a href="https://github.com/ttr1563/osmanthus-shell/blob/main/docs/ssm.md">専用Session document手順</a>を使用します。operatorがそのdocumentだけを開始でき、更新はできないようIAMを制限します。</p></section>
+      <section><h2>移行・rollback・削除</h2><p>Osmanthusは従来Onyxのstateを自動importしません。導入前に<code>/usr/bin/onyx-shell</code>を使用するaccountを復元し、対応するOnyx binaryで<code>/sys/fs/bpf/onyx</code>をdecommissionしてください。旧kernel backendが残る間はOsmanthusの起動を拒否します。</p><p>同一ABIのBPF更新はreplacement linkとpin昇格を使います。非互換ABIは旧enforcementをattachしたまま拒否されるため、旧packageへrollbackするか、認証付きの保守・decommission・fresh attachを行います。</p><pre><code>sudo osmanthus policy monitor remove 1001
+sudo osmanthus daemon decommission
+sudo dnf remove osmanthus        # または: sudo apt-get remove osmanthus</code></pre><p>OsmanthusのBPF pinまたは管理login shellが残る間、uninstallは拒否されます。policy・state・audit証跡は保持します。rollback・削除前に<a href="https://github.com/ttr1563/osmanthus-shell/blob/main/docs/operations.md">運用runbook</a>を確認してください。</p></section>
     </main>
-    <footer><p>OnyxはMIT Licenseのオープンソースです。</p><a href="./">Onyxへ戻る</a></footer>
+    <footer><p>OsmanthusはMIT Licenseのオープンソースです。</p><a href="./">Osmanthusへ戻る</a></footer>
   </body>
 </html>

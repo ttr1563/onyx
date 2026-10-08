@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::config::{self, AUDIT_FILE};
-use crate::{OnyxError, Result};
+use crate::{OsmanthusError, Result};
 
 #[derive(Debug, Serialize)]
 pub struct AuditRecord<'a> {
@@ -58,5 +58,5 @@ pub fn append(root: &Path, record: &AuditRecord<'_>) -> Result<()> {
     let mut line = serde_json::to_vec(record)?;
     line.push(b'\n');
     file.write_all(&line)?;
-    file.sync_data().map_err(OnyxError::from)
+    file.sync_data().map_err(OsmanthusError::from)
 }

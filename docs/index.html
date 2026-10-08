@@ -4,67 +4,69 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <meta name="description" content="Onyx is a lightweight command guard for Linux servers.">
-    <link rel="canonical" href="https://ttr1563.github.io/onyx/">
-    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/">
-    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/">
-    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/">
+    <meta name="description" content="Osmanthus is a lightweight command guard for Linux servers.">
+    <link rel="canonical" href="https://ttr1563.github.io/osmanthus-shell/">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/osmanthus-shell/">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/osmanthus-shell/ja/">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/osmanthus-shell/">
     <link rel="stylesheet" href="./styles.css">
-    <title>Onyx — a command guard for Linux servers</title>
+    <title>Osmanthus — a command guard for Linux servers</title>
   </head>
   <body>
     <header class="hero">
       <nav>
-        <a class="brand" href="./" aria-label="Onyx home">ONYX</a>
+        <a class="brand" href="./" aria-label="Osmanthus home">OSMANTHUS</a>
         <div class="nav-links">
           <a href="./install.html">Install</a>
           <a href="./ja/" lang="ja" hreflang="ja">日本語</a>
-          <a href="https://github.com/ttr1563/onyx">GitHub</a>
+          <a href="https://github.com/ttr1563/osmanthus-shell">GitHub</a>
         </div>
       </nav>
       <div class="hero-copy">
         <p class="eyebrow">Linux command safety</p>
         <h1>A last line of defense for server commands.</h1>
-        <p class="lead">Onyx detects risky operations, blocks them before execution, and requires approval from a separate TOTP authenticator.</p>
+        <p class="lead">Osmanthus denies selected destructive filesystem operations below protected directories, records local evidence, and uses TOTP for scoped maintenance.</p>
         <div class="actions">
           <a class="primary" href="#quick-start">Quick start</a>
           <a class="secondary" href="./install.html">Install options</a>
-          <a class="secondary" href="./guide.html">How Onyx works</a>
-          <a class="secondary" href="https://github.com/ttr1563/onyx">View source</a>
+          <a class="secondary" href="./guide.html">How Osmanthus works</a>
+          <a class="secondary" href="https://github.com/ttr1563/osmanthus-shell">View source</a>
         </div>
       </div>
     </header>
 
     <main>
-      <section class="principles" aria-label="Onyx principles">
-        <article><span>01</span><h2>Block first</h2><p>Risky commands are denied before their child process starts.</p></article>
-        <article><span>02</span><h2>Approve once</h2><p>A short-lived permit is bound to one exact command digest and consumed once.</p></article>
-        <article><span>03</span><h2>Keep evidence local</h2><p>Redacted JSONL records stay on the server for your existing log pipeline.</p></article>
+      <section class="principles" aria-label="Osmanthus principles">
+        <article><span>01</span><h2>Kernel boundary</h2><p>Linux denies the protected resource operation before the target changes.</p></article>
+        <article><span>02</span><h2>Scoped maintenance</h2><p>TOTP grants a selected path and operation set for a policy-bounded duration.</p></article>
+        <article><span>03</span><h2>Keep evidence local</h2><p>Root-only JSONL records stay on the server for your existing log pipeline.</p></article>
       </section>
 
       <section id="quick-start" class="content-grid">
         <div>
           <p class="eyebrow">Quick start</p>
           <h2>Small surface. Explicit control.</h2>
-          <p>Install from the signed DNF or APT repository, Homebrew, or an immutable Git release tag. Windows users run the Linux build inside WSL 2. Then enroll any RFC 6238-compatible authenticator.</p>
+          <p>The enforced daemon is currently a development branch. Build and validate it locally before package publication, then enroll an RFC 6238-compatible policy-administrator authenticator.</p>
         </div>
-        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
-sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
-sudo dnf install onyx
+        <pre><code>git clone https://github.com/ttr1563/osmanthus-shell.git
+cd osmanthus-shell
+git checkout feature/enforced-shell-monitoring
+cargo build --release --locked
+# Install all three binaries and the service; see Install.
 
-onyx init --account production-web-01
-sudo onyx policy init --account production-policy-admin
-onyx run -- systemctl status nginx</code></pre>
+sudo osmanthus policy init --account production-policy-admin
+sudo systemctl enable --now osmanthusd
+sudo osmanthus policy protect add /srv/production --action delete --action rename</code></pre>
       </section>
 
       <section class="flow">
-        <p class="eyebrow">Approval flow</p>
-        <h2>Nothing dangerous runs while you decide.</h2>
+        <p class="eyebrow">Enforcement flow</p>
+        <h2>Normal commands, protected resources.</h2>
         <ol>
-          <li><strong>Detect</strong><span>Onyx evaluates the executable and arguments.</span></li>
-          <li><strong>Deny</strong><span>A matching operation receives an event ID and exit code 77.</span></li>
-          <li><strong>Approve</strong><span>You inspect the event and enter a TOTP code without terminal echo.</span></li>
-          <li><strong>Retry once</strong><span>The exact command can run once within 30 seconds.</span></li>
+          <li><strong>Observe</strong><span>Enrolled UIDs produce exec and optional PTY transcript events.</span></li>
+          <li><strong>Match</strong><span>The kernel matches target ancestry and operation class.</span></li>
+          <li><strong>Deny</strong><span>A protected operation fails before changing its target.</span></li>
+          <li><strong>Maintain</strong><span>A TOTP-authenticated path/action lease expires automatically.</span></li>
         </ol>
       </section>
 
@@ -72,31 +74,39 @@ onyx run -- systemctl status nginx</code></pre>
         <div>
           <p class="eyebrow">Custom policy</p>
           <h2>Root-owned rules for your environment.</h2>
-          <p>Initialize the system policy once. Adding or removing a rule then requires root and the separate policy-administrator TOTP.</p>
+          <p>Initialize the system policy once. Protect only the directories and destructive operation classes that need a hard boundary. Every later change requires root and the separate policy-administrator TOTP.</p>
         </div>
-        <pre><code>sudo onyx policy init --account production-policy-admin
-sudo onyx policy add \
-  --id production-terraform \
-  --executable terraform \
-  --argument-contains apply \
-  --argument-contains production \
-  --risk critical \
-  --reason "production change"</code></pre>
+        <pre><code>sudo osmanthus policy protect add /srv/production \
+  --action delete \
+  --action rename \
+  --action truncate \
+  --action write
+
+sudo osmanthus maintenance grant \
+  --path /srv/production/releases/old \
+  --action delete --for 5m
+
+sudo osmanthus policy maintenance set \
+  --default 15m --maximum 12h</code></pre>
       </section>
+
+      <section class="content-grid"><div><p class="eyebrow">Data boundary</p><h2>Protect integrity first. Treat access separately.</h2><p>Opt-in write protection can make release or credential directories immutable. Database reads, credentials, and outbound destinations require identity-aware read and network policies; they are a separate planned layer rather than command-name matching.</p></div><pre><code>sudo osmanthus maintenance pause \
+  --path /srv/production/database \
+  --for 8h</code></pre></section>
 
       <section class="scope">
         <p class="eyebrow">Scope</p>
-        <h2>What v0.1 does not cover.</h2>
-        <p>The root-owned policy prevents normal-user rule changes. Onyx does not cover commands that bypass <code>onyx run</code>, root-level bypass, state-owner changes to events or permits, or physical-presence verification.</p>
-        <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">Read the security model →</a>
+        <h2>What Osmanthus does not cover.</h2>
+        <p>Osmanthus does not contain Linux root or a compromised kernel/boot chain. TOTP adds independent approval and delay; it is not proof of physical presence. Native Windows Server enforcement remains unimplemented.</p>
+        <a href="https://github.com/ttr1563/osmanthus-shell/blob/main/SECURITY.md">Read the security model →</a>
         <a href="./guide.html">Read the technical guide →</a>
-        <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">Operations runbook →</a>
+        <a href="https://github.com/ttr1563/osmanthus-shell/blob/main/docs/operations.md">Operations runbook →</a>
       </section>
     </main>
 
     <footer>
-      <p>Onyx is open source under the MIT License.</p>
-      <a href="https://github.com/ttr1563/onyx">github.com/ttr1563/onyx</a>
+      <p>Osmanthus is open source under the MIT License.</p>
+      <a href="https://github.com/ttr1563/osmanthus-shell">github.com/ttr1563/osmanthus-shell</a>
     </footer>
   </body>
 </html>

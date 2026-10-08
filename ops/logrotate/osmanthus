@@ -1,0 +1,19 @@
+/var/lib/osmanthus/audit.jsonl {
+    size 10M
+    rotate 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0600 root root
+}
+
+/var/log/osmanthus/audit.jsonl {
+    size 10M
+    rotate 7
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0600 root root
+}

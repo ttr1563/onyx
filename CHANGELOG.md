@@ -1,6 +1,29 @@
 # Changelog
 
-All notable changes to Onyx are documented in this file. Versions follow Semantic Versioning after the initial `0.1.0` release.
+All notable changes are documented in this file. Versions follow Semantic
+Versioning after the initial `0.1.0` release.
+
+## Unreleased — Osmanthus
+
+### Changed
+
+- rename the enforced Linux product and commands to `osmanthus`, `osmanthusd`,
+  and `osmanthus-shell`;
+- move new system policy, daemon runtime, audit, and BPF pin paths into the
+  `osmanthus` namespace;
+- refuse startup or package installation while pre-release Onyx BPF pins or an
+  Onyx supervised login shell remain.
+
+### Migration
+
+- public Onyx v0.1.3 artifacts and release notes remain historical and are not
+  rewritten;
+- Onyx user state and system policy are not imported automatically because the
+  public wrapper and the enforced Osmanthus architecture have different trust
+  boundaries;
+- the first Osmanthus release version remains a release decision.
+
+## Legacy Onyx releases
 
 ## [0.1.3] - 2026-10-08
 

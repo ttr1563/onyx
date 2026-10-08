@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::config::{self, Config};
 use crate::state::{self, EventStatus, GuardEvent, StateLock};
-use crate::{OnyxError, Result};
+use crate::{OsmanthusError, Result};
 
 pub fn approve_with_code(
     root: &Path,
@@ -33,7 +33,7 @@ pub fn with_verified_code<T>(
     let mut auth_state = config::load_auth_state(root)?;
     if let Some(until) = auth_state.locked_until_unix {
         if now < until {
-            return Err(OnyxError::AuthenticationLocked(until - now));
+            return Err(OsmanthusError::AuthenticationLocked(until - now));
         }
         auth_state.locked_until_unix = None;
         auth_state.failed_attempts = 0;
@@ -51,7 +51,7 @@ pub fn with_verified_code<T>(
             auth_state.locked_until_unix = Some(now + config.auth_lock_seconds);
         }
         config::save_auth_state(root, &auth_state)?;
-        return Err(OnyxError::InvalidCode);
+        return Err(OsmanthusError::InvalidCode);
     };
 
     auth_state.failed_attempts = 0;
@@ -63,10 +63,10 @@ pub fn with_verified_code<T>(
 
 pub fn ensure_pending(event: &GuardEvent, now: i64) -> Result<()> {
     if event.status != EventStatus::Pending {
-        return Err(OnyxError::EventNotPending(event.id.clone()));
+        return Err(OsmanthusError::EventNotPending(event.id.clone()));
     }
     if now > event.expires_at_unix {
-        return Err(OnyxError::EventExpired(event.id.clone()));
+        return Err(OsmanthusError::EventExpired(event.id.clone()));
     }
     Ok(())
 }

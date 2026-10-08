@@ -3,10 +3,10 @@ use std::io;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-pub enum OnyxError {
-    #[error("Onyx is not initialized. Run `onyx init` first")]
+pub enum OsmanthusError {
+    #[error("Osmanthus is not initialized. Run `osmanthus init` first")]
     NotInitialized,
-    #[error("Onyx is already initialized at {0}")]
+    #[error("Osmanthus is already initialized at {0}")]
     AlreadyInitialized(String),
     #[error("invalid state: {0}")]
     InvalidState(String),
@@ -22,7 +22,7 @@ pub enum OnyxError {
     InvalidCode,
     #[error("this operation requires root; run it with sudo")]
     RootRequired,
-    #[error("system policy is not initialized; run `sudo onyx policy init` first")]
+    #[error("system policy is not initialized; run `sudo osmanthus policy init` first")]
     SystemPolicyNotInitialized,
     #[error("command is required after `--`")]
     MissingCommand,
@@ -38,4 +38,4 @@ pub enum OnyxError {
     TimeFormat(#[from] time::error::Format),
 }
 
-pub type Result<T> = std::result::Result<T, OnyxError>;
+pub type Result<T> = std::result::Result<T, OsmanthusError>;

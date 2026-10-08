@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1.0",
+  "description": "Start an Osmanthus-audited interactive Linux shell",
+  "sessionType": "Standard_Stream",
+  "inputs": {
+    "s3BucketName": "",
+    "s3KeyPrefix": "",
+    "s3EncryptionEnabled": true,
+    "cloudWatchLogGroupName": "",
+    "cloudWatchEncryptionEnabled": true,
+    "cloudWatchStreamingEnabled": false,
+    "kmsKeyId": "",
+    "runAsEnabled": false,
+    "runAsDefaultUser": "",
+    "idleSessionTimeout": "20",
+    "maxSessionDuration": "60",
+    "shellProfile": {
+      "windows": "",
+      "linux": "exec /usr/bin/osmanthus-shell"
+    }
+  }
+}

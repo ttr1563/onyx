@@ -1,4 +1,9 @@
-# Onyx RPM repository runbook
+# Legacy Onyx RPM repository runbook
+
+> Historical reference only. This tree describes the retired Onyx v0.1.3
+> wrapper repository and its Onyx signing identity. It must not be used to
+> publish Osmanthus. The first Osmanthus repository bootstrap requires a
+> separately approved version, signing identity, and release runbook.
 
 This document covers the public Amazon Linux 2023 repository at
 `https://ttr1563.github.io/onyx/rpm/`. It is a package distribution path, not
@@ -37,9 +42,10 @@ scripts/build-rpm.sh 0.1.3 docs/rpm/al2023
 ```
 
 The script performs a locked release build and creates the architecture RPM.
-It does not sign or publish anything. The package owns the executable,
-documentation, license, and logrotate configuration. It deliberately does not
-own or remove `/var/lib/onyx` or `/etc/onyx`.
+It does not sign or publish anything. The package owns all three executables,
+the systemd unit, documentation, the SSM Session document template, license,
+and logrotate configuration. It deliberately does not own or remove
+`/var/lib/onyx` or `/etc/onyx`.
 
 ## Sign and generate metadata
 

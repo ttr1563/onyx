@@ -1,112 +1,29 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex,nofollow">
-    <meta name="description" content="How Onyx evaluates, blocks, approves, and audits Linux commands.">
-    <link rel="canonical" href="https://ttr1563.github.io/onyx/guide.html">
-    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/guide.html">
-    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/guide.html">
-    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/guide.html">
-    <link rel="stylesheet" href="./styles.css">
-    <title>How Onyx works</title>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><meta name="description" content="How Osmanthus enforces protected filesystem roots on Linux.">
+    <link rel="canonical" href="https://ttr1563.github.io/osmanthus-shell/guide.html"><link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/osmanthus-shell/ja/guide.html"><link rel="stylesheet" href="./styles.css">
+    <title>How Osmanthus works</title>
   </head>
   <body>
-    <header class="hero">
-      <nav>
-        <a class="brand" href="./" aria-label="Onyx home">ONYX</a>
-        <div class="nav-links"><a href="./install.html">Install</a><a href="./ja/guide.html" lang="ja" hreflang="ja">日本語</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div>
-      </nav>
-      <div class="docs-hero"><p class="eyebrow">Technical guide</p><h1>How Onyx works.</h1><p class="lead">Command evaluation, one-time approval, custom rules, and local audit records.</p></div>
-    </header>
+    <header class="hero"><nav><a class="brand" href="./">OSMANTHUS</a><div class="nav-links"><a href="./install.html">Install</a><a href="./ja/guide.html" lang="ja">日本語</a><a href="https://github.com/ttr1563/osmanthus-shell">GitHub</a></div></nav><div class="docs-hero"><p class="eyebrow">Technical guide</p><h1>Protection follows the resource, not the command name.</h1><p class="lead">A root daemon, pinned Linux BPF LSM links, and scoped TOTP maintenance form the enforced boundary.</p></div></header>
     <main class="docs">
-      <section>
-        <h2>The protection model</h2>
-        <p>Onyx v0.1 is an <strong>explicit command wrapper</strong>. Automation or an operator invokes <code>onyx run -- &lt;command&gt;</code>. Onyx evaluates the argument vector before it creates the child process. It does not intercept commands that are launched outside this wrapper.</p>
-        <div class="flow-diagram" aria-label="Onyx command execution flow">
-          <div class="node"><strong>1. Request</strong><span><code>onyx run -- ...</code></span></div>
-          <div class="node"><strong>2. Verify</strong><span>Root-owned system policy and digest</span></div>
-          <div class="node"><strong>3. Decide</strong><span>Allow now or create a blocked event</span></div>
-          <div class="node"><strong>4. Execute</strong><span>Consume any permit before process creation</span></div>
-          <div class="node"><strong>5. Audit</strong><span>Append a redacted JSONL record</span></div>
-        </div>
-        <p class="callout"><strong>Fail-closed before execution:</strong> if required state or the pre-execution audit record cannot be written safely, the protected command does not start. A completion-log failure cannot undo a command that already finished.</p>
-      </section>
-      <section>
-        <h2>Safe and risky paths</h2>
-        <table class="state-table"><thead><tr><th>Finding</th><th>Onyx action</th><th>Operator result</th></tr></thead><tbody>
-          <tr><td>No policy match</td><td>Write an allowed record and start the child.</td><td>The child exit code is preserved.</td></tr>
-          <tr><td>Risk match, no permit</td><td>Create a pending event and do not start the child.</td><td>Exit 77, event ID, and matched rule IDs.</td></tr>
-          <tr><td>Risk match, valid exact permit</td><td>Atomically consume the permit, then start the child.</td><td>The approved command can run once.</td></tr>
-          <tr><td>State, lock, or audit failure</td><td>Return an error without starting the child.</td><td>Administrative investigation is required.</td></tr>
-        </tbody></table>
-      </section>
-      <section>
-        <h2>Approval is bound to one exact command</h2>
-        <p>When a risky command is denied, Onyx hashes every argument's byte length and value in order. This preserves argument boundaries: approving one argument vector does not approve another spelling or an added option.</p>
-        <div class="flow-diagram" aria-label="Onyx approval state transition">
-          <div class="node"><strong>Blocked</strong><span>Pending event, 10-minute lifetime</span></div>
-          <div class="node"><strong>Review</strong><span>Redacted command and rules</span></div>
-          <div class="node"><strong>TOTP</strong><span>Six digits, replay and failure checks</span></div>
-          <div class="node"><strong>Permit</strong><span>Exact digest, 30-second lifetime</span></div>
-          <div class="node"><strong>Consumed</strong><span>Removed before the child starts</span></div>
-        </div>
-        <p>TOTP requires the enrolled code before approval. It does not guarantee physical presence or protect the seed from the state owner or root. Hardware-backed approval is not included in v0.1.</p>
-      </section>
-      <section>
-        <h2>Add root-managed approval rules</h2>
-        <p>The built-in policy covers destructive deletion, filesystem formatting, raw device writes, shutdown, privilege wrappers, shell command strings, destructive <code>find</code>, root-wide permission changes, likely secret transfer, and decoded <code>eval</code>. Initialize the authoritative system policy, then add environment-specific rules:</p>
-        <pre><code>sudo onyx policy init --account production-policy-admin
+      <section><h2>Runtime flow</h2><div class="flow-diagram"><div class="node"><strong>1. Normal command</strong><span>No Osmanthus prefix</span></div><div class="node"><strong>2. Kernel hook</strong><span>Target ancestry + action</span></div><div class="node"><strong>3. Decision</strong><span>Allow, lease, or deny</span></div><div class="node"><strong>4. Evidence</strong><span>Local JSONL event</span></div><div class="node"><strong>5. Maintenance</strong><span>Scoped TOTP lease</span></div></div><p>A process may start, but a selected delete, rename, truncate, write, chmod, or chown below a protected root is rejected before the target changes. Using Python or another binary does not bypass the same kernel operation.</p></section>
+      <section><h2>Scope</h2><table class="state-table"><thead><tr><th>Input</th><th>Effect</th></tr></thead><tbody><tr><td>Unprotected path</td><td>Normal operating-system behavior.</td></tr><tr><td>Protected path + selected action</td><td>Synchronous denial and audit event.</td></tr><tr><td>Matching active lease</td><td>Only that path and action are temporarily allowed.</td></tr><tr><td>Mount below a protected root</td><td>Denied to prevent ancestry replacement.</td></tr><tr><td>Path deeper than the 256-dentry walk</td><td>Fails closed with <code>ELOOP</code>.</td></tr></tbody></table><p class="callout"><strong>Write boundary:</strong> <code>write</code> is opt-in and covers write syscalls and new writable shared mappings. Stop existing writers before activation because an already-writable mapping cannot be revoked.</p></section>
+      <section><h2>Daemon and failure behavior</h2><p><code>osmanthusd</code> owns policy reload, TOTP verification, maintenance, sessions, and <code>/var/log/osmanthus/audit.jsonl</code>. BPF maps and links are pinned below <code>/sys/fs/bpf/osmanthus</code>, so a crash does not detach enforcement. Audit-consumer failure terminates the daemon and systemd restarts it; maintenance leases disappear on restart.</p><p>Program upgrades are blue-green: all replacement links attach and receive temporary pins before formal pins are promoted. Startup repairs an interrupted promotion.</p></section>
+      <section><h2>Shell evidence</h2><p><code>policy monitor add UID --shell /bin/bash</code> stores the original shell and changes that account to <code>/usr/bin/osmanthus-shell</code>. The PTY supervisor records input and output before forwarding it and terminates the child if daemon recording fails. Removing the UID restores the original shell. Without <code>--shell</code>, Osmanthus records exec events only.</p><p>PTY evidence is raw base64-encoded terminal content and can contain typed secrets or application output; it is not automatically redacted.</p><p>SSM Session Manager starts <code>sh</code> by default and can bypass the account login shell. Use a restricted custom Session document or shell profile that executes <code>/usr/bin/osmanthus-shell</code>. Kernel protected-root enforcement still applies host-wide even without PTY integration.</p></section>
+      <section><h2>Policy and authentication</h2><p>The policy and digest are root-owned read-only files under <code>/etc/osmanthus</code>. Structured changes require root and the policy-administrator TOTP. Policy values are inspectable configuration, not encrypted secrets.</p><pre><code>sudo osmanthus policy protect add /srv/production \
+  --action delete --action rename --action truncate --action write
 
-sudo onyx policy add \
-  --id production-terraform \
-  --executable terraform \
-  --argument-contains apply \
-  --argument-contains production \
-  --risk critical \
-  --reason "production infrastructure change"
+sudo osmanthus maintenance grant \
+  --path /srv/production/releases/old --action delete --for 5m
 
-onyx policy list
-onyx check -- terraform apply production.tfplan
-
-sudo onyx policy remove --id production-terraform</code></pre>
-        <p>Policy mutation requires root and the independent policy-administrator TOTP. Every supplied argument fragment must match. Custom rules add approval requirements; they cannot disable built-in rules. v0.1 does not provide an absolute, unapprovable deny mode.</p>
-        <pre><code>{
-  "schema_version": 1,
-  "rules": [{
-    "id": "production-terraform",
-    "executable": "terraform",
-    "argument_contains": ["apply", "production"],
-    "risk": "critical",
-    "reason": "production infrastructure change"
-  }]
-}</code></pre>
-        <p>Onyx is not a semantic malware analyzer. Shell strings, interpreters, aliases, encoded payloads, and equivalent system calls can hide intent. Conservative rules may require approval for harmless commands, while commands outside the wrapper remain invisible.</p>
-      </section>
-      <section>
-        <h2>State and local evidence</h2>
-        <p>Root uses <code>/var/lib/onyx</code>; regular users use the XDG state directory. Directories are mode <code>0700</code> and state files are mode <code>0600</code>. Symlinks and unexpected file types are rejected. JSON replacement uses a same-directory temporary file, <code>fsync</code>, rename, and parent-directory <code>fsync</code>.</p>
-        <pre><code>onyx/
-├── .lock
-├── audit.jsonl
-├── auth-state.json
-├── config.json
-├── policy.json
-└── events/&lt;event-id&gt;.json</code></pre>
-        <pre><code>/etc/onyx/
-├── policy.json        root:root 0444
-├── policy.sha256      root:root 0444
-└── admin/             root-only policy TOTP and audit</code></pre>
-        <p>The readable system policy contains rule IDs, executable names, argument fragments, risk levels, and reasons; do not place credentials in rule fields. It is validated before every check or run. Missing pairs, unsafe type, owner or mode, invalid schema, and digest mismatch stop the operation. The digest detects inconsistency; operating-system ownership prevents a normal user from replacing both files.</p>
-        <p>Audit records contain timestamps, actions, event IDs, command digests, redacted summaries, matched rule IDs, and relevant exit status. They do not contain stdout, stderr, environment values, TOTP seeds, or submitted codes.</p>
-      </section>
-      <section>
-        <h2>Deployment flow</h2>
-        <ol><li>Install a signed RPM or Debian package, or use another documented source path, and initialize execution state as the constrained identity.</li><li>Run <code>sudo onyx policy init</code> and enroll the separate administrator authenticator.</li><li>Verify clock synchronization, permissions, policy listing, a harmless run, and a non-executing blocked check.</li><li>Change the intended automation entry point to <code>onyx run -- ...</code>.</li><li>Monitor failures and preserve both state trees before incident work.</li></ol>
-        <p>Read the <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">operations runbook</a>, <a href="https://github.com/ttr1563/onyx/blob/main/docs/architecture.md">architecture</a>, and <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">security policy</a> before production use.</p>
-      </section>
+sudo osmanthus policy maintenance set --default 15m --maximum 12h
+sudo osmanthus maintenance pause --path /srv/production/database --for 8h</code></pre></section>
+      <section><h2>Database and exfiltration</h2><p>Filesystem integrity does not stop credential reads or database queries. Identity-aware secret-read policy, database destination policy, and outbound destination control are separate planned layers. Database roles and native audit remain authoritative.</p></section>
+      <section><h2>Security boundary</h2><p>Osmanthus is intended to constrain managed non-root identities. It does not contain root, a compromised kernel, or a compromised boot chain. TOTP is an independent approval factor but not proof of physical presence. Native Windows Server enforcement is a separate, incomplete backend.</p></section>
     </main>
-    <footer><p>Onyx is open source under the MIT License.</p><a href="./">Back to Onyx</a></footer>
+    <footer><p>Osmanthus is open source under the MIT License.</p><a href="https://github.com/ttr1563/osmanthus-shell">GitHub</a></footer>
   </body>
 </html>

@@ -8,12 +8,12 @@ use uuid::Uuid;
 
 use crate::config::{self, Config};
 use crate::policy::PolicyFile;
-use crate::{OnyxError, Result};
+use crate::{OsmanthusError, Result};
 
-pub const SYSTEM_POLICY_DIR: &str = "/etc/onyx";
+pub const SYSTEM_POLICY_DIR: &str = "/etc/osmanthus";
 pub const SYSTEM_POLICY_FILE: &str = "policy.json";
 pub const SYSTEM_POLICY_DIGEST_FILE: &str = "policy.sha256";
-pub const ADMIN_STATE_DIR: &str = "/etc/onyx/admin";
+pub const ADMIN_STATE_DIR: &str = "/etc/osmanthus/admin";
 
 const MAX_POLICY_BYTES: u64 = 1_048_576;
 const SYSTEM_DIRECTORY_MODE: u32 = 0o755;
@@ -21,7 +21,7 @@ const SYSTEM_FILE_MODE: u32 = 0o444;
 
 pub fn require_root() -> Result<()> {
     if unsafe { libc::geteuid() } != 0 {
-        return Err(OnyxError::RootRequired);
+        return Err(OsmanthusError::RootRequired);
     }
     Ok(())
 }
@@ -38,12 +38,14 @@ pub fn initialize(admin_config: &Config) -> Result<()> {
     require_root()?;
     let target = Path::new(SYSTEM_POLICY_DIR);
     if path_exists_without_following(target)? {
-        return Err(OnyxError::AlreadyInitialized(SYSTEM_POLICY_DIR.to_owned()));
+        return Err(OsmanthusError::AlreadyInitialized(
+            SYSTEM_POLICY_DIR.to_owned(),
+        ));
     }
     let parent = target
         .parent()
-        .ok_or_else(|| OnyxError::UnsafePath(SYSTEM_POLICY_DIR.to_owned()))?;
-    let temporary = parent.join(format!(".onyx-{}.tmp", Uuid::new_v4()));
+        .ok_or_else(|| OsmanthusError::UnsafePath(SYSTEM_POLICY_DIR.to_owned()))?;
+    let temporary = parent.join(format!(".osmanthus-{}.tmp", Uuid::new_v4()));
     let result = (|| -> Result<()> {
         fs::create_dir(&temporary)?;
         fs::set_permissions(
@@ -66,7 +68,7 @@ pub fn save(policy: &PolicyFile) -> Result<()> {
     require_root()?;
     let store = PolicyStore::new(Path::new(SYSTEM_POLICY_DIR), 0);
     if store.load()?.is_none() {
-        return Err(OnyxError::SystemPolicyNotInitialized);
+        return Err(OsmanthusError::SystemPolicyNotInitialized);
     }
     store.write(policy)
 }
@@ -107,14 +109,14 @@ impl PolicyStore {
     fn validate_directory(&self) -> Result<()> {
         let metadata = fs::symlink_metadata(&self.directory)?;
         if metadata.file_type().is_symlink() || !metadata.is_dir() {
-            return Err(OnyxError::UnsafePath(format!(
+            return Err(OsmanthusError::UnsafePath(format!(
                 "{} must be a real directory",
                 self.directory.display()
             )));
         }
         let mode = metadata.permissions().mode() & 0o777;
         if metadata.uid() != self.expected_uid || mode != SYSTEM_DIRECTORY_MODE {
-            return Err(OnyxError::UnsafePath(format!(
+            return Err(OsmanthusError::UnsafePath(format!(
                 "{} must be owned by uid {} with mode 755",
                 self.directory.display(),
                 self.expected_uid
@@ -132,7 +134,7 @@ impl PolicyStore {
         }
         self.validate_directory()?;
         if !policy_exists || !digest_exists {
-            return Err(OnyxError::InvalidState(
+            return Err(OsmanthusError::InvalidState(
                 "system policy or its digest is missing".to_owned(),
             ));
         }
@@ -140,16 +142,18 @@ impl PolicyStore {
         let policy_bytes = self.read_file(&self.policy_path(), MAX_POLICY_BYTES)?;
         let digest_bytes = self.read_file(&self.digest_path(), 128)?;
         let expected = std::str::from_utf8(&digest_bytes)
-            .map_err(|_| OnyxError::InvalidState("system policy digest is not UTF-8".to_owned()))?
+            .map_err(|_| {
+                OsmanthusError::InvalidState("system policy digest is not UTF-8".to_owned())
+            })?
             .trim_end();
         if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            return Err(OnyxError::InvalidState(
+            return Err(OsmanthusError::InvalidState(
                 "system policy digest is invalid".to_owned(),
             ));
         }
         let actual = format!("{:x}", Sha256::digest(&policy_bytes));
         if expected != actual {
-            return Err(OnyxError::InvalidState(
+            return Err(OsmanthusError::InvalidState(
                 "system policy digest does not match policy.json".to_owned(),
             ));
         }
@@ -167,14 +171,14 @@ impl PolicyStore {
         let metadata = file.metadata()?;
         let mode = metadata.permissions().mode() & 0o777;
         if !metadata.is_file() || metadata.uid() != self.expected_uid || mode != SYSTEM_FILE_MODE {
-            return Err(OnyxError::UnsafePath(format!(
+            return Err(OsmanthusError::UnsafePath(format!(
                 "{} must be a regular file owned by uid {} with mode 444",
                 path.display(),
                 self.expected_uid
             )));
         }
         if metadata.len() > maximum {
-            return Err(OnyxError::InvalidState(format!(
+            return Err(OsmanthusError::InvalidState(format!(
                 "system policy file is too large: {}",
                 path.display()
             )));
@@ -250,7 +254,9 @@ mod tests {
     use crate::policy::{CustomRule, RiskLevel};
 
     fn store(temp: &TempDir) -> PolicyStore {
-        PolicyStore::new(&temp.path().join("etc-onyx"), unsafe { libc::geteuid() })
+        PolicyStore::new(&temp.path().join("etc-osmanthus"), unsafe {
+            libc::geteuid()
+        })
     }
 
     fn rule() -> CustomRule {
@@ -299,7 +305,7 @@ mod tests {
         .unwrap();
 
         assert!(
-            matches!(store.load(), Err(OnyxError::InvalidState(message)) if message.contains("digest does not match"))
+            matches!(store.load(), Err(OsmanthusError::InvalidState(message)) if message.contains("digest does not match"))
         );
     }
 
@@ -309,7 +315,7 @@ mod tests {
         let store = store(&temp);
         store.write(&PolicyFile::default()).unwrap();
         fs::set_permissions(store.policy_path(), fs::Permissions::from_mode(0o644)).unwrap();
-        assert!(matches!(store.load(), Err(OnyxError::UnsafePath(_))));
+        assert!(matches!(store.load(), Err(OsmanthusError::UnsafePath(_))));
 
         fs::remove_file(store.policy_path()).unwrap();
         std::os::unix::fs::symlink(store.digest_path(), store.policy_path()).unwrap();
@@ -323,7 +329,7 @@ mod tests {
         store.write(&PolicyFile::default()).unwrap();
         fs::remove_file(store.digest_path()).unwrap();
         assert!(
-            matches!(store.load(), Err(OnyxError::InvalidState(message)) if message.contains("missing"))
+            matches!(store.load(), Err(OsmanthusError::InvalidState(message)) if message.contains("missing"))
         );
     }
 
@@ -334,7 +340,7 @@ mod tests {
         store.ensure_directory().unwrap();
 
         assert!(
-            matches!(store.load(), Err(OnyxError::InvalidState(message)) if message.contains("missing"))
+            matches!(store.load(), Err(OsmanthusError::InvalidState(message)) if message.contains("missing"))
         );
     }
 }
