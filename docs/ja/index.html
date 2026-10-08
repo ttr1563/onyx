@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="description" content="OnyxはLinuxサーバー向けの軽量なコマンドガードです。">
+    <link rel="canonical" href="https://ttr1563.github.io/onyx/ja/">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/">
+    <link rel="stylesheet" href="../styles.css">
+    <title>Onyx — Linuxサーバー向けコマンドガード</title>
+  </head>
+  <body>
+    <header class="hero">
+      <nav>
+        <a class="brand" href="../" aria-label="Onyxホーム">ONYX</a>
+        <div class="nav-links">
+          <a href="../" lang="en" hreflang="en">English</a>
+          <a href="https://github.com/ttr1563/onyx">GitHub</a>
+        </div>
+      </nav>
+      <div class="hero-copy">
+        <p class="eyebrow">Linux command safety</p>
+        <h1>サーバー操作に、最後の防御線を。</h1>
+        <p class="lead">Onyxは危険な操作を実行前に検知・遮断し、別端末のTOTP認証器による承認を要求します。</p>
+        <div class="actions">
+          <a class="primary" href="#quick-start">クイックスタート</a>
+          <a class="secondary" href="./guide.html">仕組みを読む</a>
+          <a class="secondary" href="https://github.com/ttr1563/onyx">ソースを見る</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="principles" aria-label="Onyxの原則">
+        <article><span>01</span><h2>まず遮断</h2><p>危険なコマンドは子プロセスが開始する前に拒否します。</p></article>
+        <article><span>02</span><h2>一度だけ承認</h2><p>短時間の許可を一つのコマンドダイジェストへ結び付け、一度だけ消費します。</p></article>
+        <article><span>03</span><h2>証跡はローカルに</h2><p>秘匿値を除いたJSONL記録を、既存のログ転送基盤から利用できます。</p></article>
+      </section>
+
+      <section id="quick-start" class="content-grid">
+        <div>
+          <p class="eyebrow">クイックスタート</p>
+          <h2>小さな構成で、明示的に守る。</h2>
+          <p>Amazon Linux 2023では、署名付きOnyxリポジトリを一度登録するとDNFから導入・更新できます。その後、RFC 6238互換の認証アプリを登録します。</p>
+        </div>
+        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
+sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
+sudo dnf install onyx
+
+onyx init --account production-web-01
+onyx run -- systemctl status nginx</code></pre>
+      </section>
+
+      <section class="flow">
+        <p class="eyebrow">承認フロー</p>
+        <h2>判断が終わるまで、危険な操作は動きません。</h2>
+        <ol>
+          <li><strong>検知</strong><span>実行ファイルと引数を評価します。</span></li>
+          <li><strong>拒否</strong><span>該当操作へイベントIDと終了コード77を返します。</span></li>
+          <li><strong>承認</strong><span>イベントを確認し、画面に表示しない形でTOTPコードを入力します。</span></li>
+          <li><strong>一度だけ再実行</strong><span>同一コマンドを30秒以内に一度だけ実行できます。</span></li>
+        </ol>
+      </section>
+
+      <section class="warning">
+        <p class="eyebrow">保護境界</p>
+        <h2>Onyx v0.1は明示的なラッパーであり、ホスト全体を強制保護するものではありません。</h2>
+        <p><code>onyx run</code>を経由しないコマンドは保護されません。rootはユーザー空間のガードを無効化でき、Onyx状態の所有者として動くコードはTOTPシードを読み取れます。物理キーや完全な侵入防止を実現済みとは主張しません。</p>
+        <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">セキュリティモデルを読む →</a>
+        <a href="./guide.html">技術ガイドを読む →</a>
+        <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbookを読む →</a>
+      </section>
+    </main>
+
+    <footer>
+      <p>OnyxはMIT Licenseのオープンソースです。</p>
+      <a href="https://github.com/ttr1563/onyx">github.com/ttr1563/onyx</a>
+    </footer>
+  </body>
+</html>

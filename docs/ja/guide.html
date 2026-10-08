@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="description" content="OnyxがLinuxコマンドを判定、遮断、承認、監査する仕組み。">
+    <link rel="canonical" href="https://ttr1563.github.io/onyx/ja/guide.html">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/guide.html">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/guide.html">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/guide.html">
+    <link rel="stylesheet" href="../styles.css">
+    <title>Onyxの仕組み</title>
+  </head>
+  <body>
+    <header class="hero">
+      <nav>
+        <a class="brand" href="./" aria-label="Onyxホーム">ONYX</a>
+        <div class="nav-links"><a href="../guide.html" lang="en" hreflang="en">English</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div>
+      </nav>
+      <div class="docs-hero"><p class="eyebrow">技術ガイド</p><h1>Onyxは何をしているのか。</h1><p class="lead">コマンド実行前の判定、一度限りの承認、ローカル証跡、そして運用時に守るべき限界を説明します。</p></div>
+    </header>
+    <main class="docs">
+      <section>
+        <h2>保護モデル</h2>
+        <p>Onyx v0.1は<strong>明示的なコマンドラッパー</strong>です。自動処理または運用者が<code>onyx run -- &lt;command&gt;</code>を実行すると、Onyxは子プロセスを作成する前に引数列を評価します。このラッパーを経由しないコマンドは横取りも監視もしません。</p>
+        <div class="flow-diagram" aria-label="Onyxのコマンド実行フロー">
+          <div class="node"><strong>1. 受付</strong><span><code>onyx run -- ...</code></span></div>
+          <div class="node"><strong>2. 判定</strong><span>組込みルールと追加ルール</span></div>
+          <div class="node"><strong>3. 決定</strong><span>即時許可または遮断イベント作成</span></div>
+          <div class="node"><strong>4. 実行</strong><span>permitを消費してからプロセス作成</span></div>
+          <div class="node"><strong>5. 監査</strong><span>秘匿値を除いたJSONL追記</span></div>
+        </div>
+        <p class="callout"><strong>実行前はfail-closed：</strong>必要な状態や実行前監査記録を安全に書けなければ、保護対象コマンドを開始しません。ただし、実行済みコマンドは完了ログの書込み失敗によって取り消せません。</p>
+      </section>
+      <section>
+        <h2>安全な経路と危険な経路</h2>
+        <table class="state-table"><thead><tr><th>判定</th><th>Onyxの処理</th><th>利用者から見た結果</th></tr></thead><tbody>
+          <tr><td>ルール一致なし</td><td>許可記録を書き、子プロセスを開始します。</td><td>子プロセスの終了コードをそのまま返します。</td></tr>
+          <tr><td>危険ルール一致、permitなし</td><td>pending eventを作り、子プロセスを開始しません。</td><td>終了コード77、event ID、該当rule IDを返します。</td></tr>
+          <tr><td>危険ルール一致、完全一致permitあり</td><td>permitを原子的に消費してから子プロセスを開始します。</td><td>承認したコマンドを一度だけ実行できます。</td></tr>
+          <tr><td>状態・排他・監査の失敗</td><td>子プロセスを開始せずエラーにします。</td><td>管理者による原因確認が必要です。</td></tr>
+        </tbody></table>
+      </section>
+      <section>
+        <h2>承認は一つのコマンドへ厳密に結び付きます</h2>
+        <p>危険なコマンドを拒否すると、Onyxは各引数のバイト長と値を順番どおりにSHA-256へ入力します。引数境界も区別するため、ある引数列への承認を、表記やオプションを変えた別コマンドへ流用できません。</p>
+        <div class="flow-diagram" aria-label="Onyxの承認状態遷移">
+          <div class="node"><strong>遮断</strong><span>pending event、有効10分</span></div>
+          <div class="node"><strong>確認</strong><span>redact済みコマンドとrule</span></div>
+          <div class="node"><strong>TOTP</strong><span>6桁、再利用・失敗回数を検査</span></div>
+          <div class="node"><strong>Permit</strong><span>完全一致digest、有効30秒</span></div>
+          <div class="node"><strong>消費済み</strong><span>子プロセス開始前に削除</span></div>
+        </div>
+        <p>TOTPは共有秘密方式です。登録済み認証器を持たない操作主体に時間的な壁を作れますが、物理的な在席証明ではありません。Onyx状態の所有者またはrootとして動くコードは、サーバー側seedを読めます。ハードウェア署名を使う非対称承認は将来の特権broker構想であり、現行版の機能とは主張しません。</p>
+      </section>
+      <section>
+        <h2>ポリシーと解釈の難しいコマンド</h2>
+        <p>組込みポリシーは、再帰的削除、filesystem初期化、raw device書込み、shutdown、権限wrapper、shell文字列、破壊的な<code>find</code>、root全体の権限変更、秘密情報らしき転送、decodeと<code>eval</code>の組合せなど、少数の監査しやすいパターンを対象にします。CLIから追加するsite ruleは遮断範囲を広げる方向にだけ働きます。</p>
+        <p>Onyxは意味解析型のmalware検出器ではありません。shell文字列、interpreter、alias、難読化payload、同等のsystem callは意図を隠せます。そのため安全な操作でも保守的に承認を求める場合があり、wrapper外の操作は見えません。</p>
+      </section>
+      <section>
+        <h2>状態とローカル証跡</h2>
+        <p>rootは<code>/var/lib/onyx</code>、一般ユーザーはXDG state directoryを使います。directoryは<code>0700</code>、機密fileは<code>0600</code>です。symlinkと想定外のfile種別を拒否し、JSON更新は同一directoryの一時file、<code>fsync</code>、rename、親directoryの<code>fsync</code>で行います。</p>
+        <pre><code>onyx/
+├── .lock
+├── audit.jsonl
+├── auth-state.json
+├── config.json
+├── policy.json
+└── events/&lt;event-id&gt;.json</code></pre>
+        <p>監査記録にはUTC時刻、action、event ID、command digest、redact済み概要、該当rule ID、必要な終了状態を含めます。stdout、stderr、環境変数、TOTP seed、入力コードは記録しません。ただしrootはローカル証跡を変更できます。改ざん耐性が必要なら既存collectorから外部保存してください。</p>
+      </section>
+      <section>
+        <h2>導入・運用フロー</h2>
+        <ol><li>署名済みRPMを導入し、実際に利用する制約付きOS identityでOnyxを初期化します。</li><li>時刻同期、権限、安全な実行、非実行の遮断checkを確認します。</li><li>保護したいautomationの入口を<code>onyx run -- ...</code>へ変更します。</li><li>遮断の反復、承認失敗、disk容量、時刻同期、wrapperを迂回する経路を監視します。</li><li>別管理の復旧経路を残し、incident作業前に必要な状態と証跡を保全します。</li></ol>
+        <p>本番利用前に<a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbook</a>、<a href="https://github.com/ttr1563/onyx/blob/main/docs/architecture.md">architecture</a>、<a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">security policy</a>を確認してください。</p>
+      </section>
+    </main>
+    <footer><p>OnyxはMIT Licenseのオープンソースです。</p><a href="./">Onyxへ戻る</a></footer>
+  </body>
+</html>

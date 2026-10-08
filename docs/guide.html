@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="description" content="How Onyx evaluates, blocks, approves, and audits Linux commands.">
+    <link rel="canonical" href="https://ttr1563.github.io/onyx/guide.html">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/guide.html">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/guide.html">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/guide.html">
+    <link rel="stylesheet" href="./styles.css">
+    <title>How Onyx works</title>
+  </head>
+  <body>
+    <header class="hero">
+      <nav>
+        <a class="brand" href="./" aria-label="Onyx home">ONYX</a>
+        <div class="nav-links"><a href="./ja/guide.html" lang="ja" hreflang="ja">日本語</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div>
+      </nav>
+      <div class="docs-hero"><p class="eyebrow">Technical guide</p><h1>How Onyx works.</h1><p class="lead">A precise look at the decision point, one-time approval, local evidence, and the limits operators must preserve.</p></div>
+    </header>
+    <main class="docs">
+      <section>
+        <h2>The protection model</h2>
+        <p>Onyx v0.1 is an <strong>explicit command wrapper</strong>. Automation or an operator invokes <code>onyx run -- &lt;command&gt;</code>. Onyx evaluates the argument vector before it creates the child process. It does not intercept commands that are launched outside this wrapper.</p>
+        <div class="flow-diagram" aria-label="Onyx command execution flow">
+          <div class="node"><strong>1. Request</strong><span><code>onyx run -- ...</code></span></div>
+          <div class="node"><strong>2. Evaluate</strong><span>Built-in and local additive rules</span></div>
+          <div class="node"><strong>3. Decide</strong><span>Allow now or create a blocked event</span></div>
+          <div class="node"><strong>4. Execute</strong><span>Consume any permit before process creation</span></div>
+          <div class="node"><strong>5. Audit</strong><span>Append a redacted JSONL record</span></div>
+        </div>
+        <p class="callout"><strong>Fail-closed before execution:</strong> if required state or the pre-execution audit record cannot be written safely, the protected command does not start. A completion-log failure cannot undo a command that already finished.</p>
+      </section>
+      <section>
+        <h2>Safe and risky paths</h2>
+        <table class="state-table"><thead><tr><th>Finding</th><th>Onyx action</th><th>Operator result</th></tr></thead><tbody>
+          <tr><td>No policy match</td><td>Write an allowed record and start the child.</td><td>The child exit code is preserved.</td></tr>
+          <tr><td>Risk match, no permit</td><td>Create a pending event and do not start the child.</td><td>Exit 77, event ID, and matched rule IDs.</td></tr>
+          <tr><td>Risk match, valid exact permit</td><td>Atomically consume the permit, then start the child.</td><td>The approved command can run once.</td></tr>
+          <tr><td>State, lock, or audit failure</td><td>Return an error without starting the child.</td><td>Administrative investigation is required.</td></tr>
+        </tbody></table>
+      </section>
+      <section>
+        <h2>Approval is bound to one exact command</h2>
+        <p>When a risky command is denied, Onyx hashes every argument's byte length and value in order. This preserves argument boundaries: approving one argument vector does not approve another spelling or an added option.</p>
+        <div class="flow-diagram" aria-label="Onyx approval state transition">
+          <div class="node"><strong>Blocked</strong><span>Pending event, 10-minute lifetime</span></div>
+          <div class="node"><strong>Review</strong><span>Redacted command and rules</span></div>
+          <div class="node"><strong>TOTP</strong><span>Six digits, replay and failure checks</span></div>
+          <div class="node"><strong>Permit</strong><span>Exact digest, 30-second lifetime</span></div>
+          <div class="node"><strong>Consumed</strong><span>Removed before the child starts</span></div>
+        </div>
+        <p>TOTP is a shared-secret mechanism. It provides delay when an actor lacks the enrolled authenticator, but it is not a physical-presence guarantee. Code running as the Onyx state owner, or root, can read the server-side seed. Hardware-backed asymmetric approval belongs to the planned privileged-broker design and is not claimed here.</p>
+      </section>
+      <section>
+        <h2>Policy and difficult-to-interpret commands</h2>
+        <p>The built-in policy covers a deliberately small set of high-risk patterns: destructive recursive deletion, filesystem formatting, raw device writes, shutdown, privilege wrappers, shell command strings, destructive <code>find</code>, root-wide permission changes, likely secret transfer, and decoded <code>eval</code>. Site rules can only add enforcement through the CLI.</p>
+        <p>Onyx is not a semantic malware analyzer. Shell strings, interpreters, aliases, encoded payloads, and equivalent system calls can hide intent. Conservative rules may require approval for harmless commands, while commands outside the wrapper remain invisible.</p>
+      </section>
+      <section>
+        <h2>State and local evidence</h2>
+        <p>Root uses <code>/var/lib/onyx</code>; regular users use the XDG state directory. Directories are mode <code>0700</code> and sensitive files are mode <code>0600</code>. Symlinks and unexpected file types are rejected. JSON replacement uses a same-directory temporary file, <code>fsync</code>, rename, and parent-directory <code>fsync</code>.</p>
+        <pre><code>onyx/
+├── .lock
+├── audit.jsonl
+├── auth-state.json
+├── config.json
+├── policy.json
+└── events/&lt;event-id&gt;.json</code></pre>
+        <p>Audit records contain timestamps, actions, event IDs, command digests, redacted summaries, matched rule IDs, and relevant exit status. They do not contain stdout, stderr, environment values, TOTP seeds, or submitted codes. Local evidence can still be changed by root; forward it with an existing collector when tamper-resistant retention is required.</p>
+      </section>
+      <section>
+        <h2>Deployment flow</h2>
+        <ol><li>Install the signed RPM and initialize Onyx as the constrained identity that will invoke it.</li><li>Verify clock synchronization, permissions, a harmless run, and a non-executing blocked check.</li><li>Change the intended automation entry point to <code>onyx run -- ...</code>.</li><li>Monitor repeated blocks, approval failures, disk capacity, clock health, and wrapper bypass paths.</li><li>Keep a separately controlled recovery path and preserve state before incident work.</li></ol>
+        <p>Read the <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">operations runbook</a>, <a href="https://github.com/ttr1563/onyx/blob/main/docs/architecture.md">architecture</a>, and <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">security policy</a> before production use.</p>
+      </section>
+    </main>
+    <footer><p>Onyx is open source under the MIT License.</p><a href="./">Back to Onyx</a></footer>
+  </body>
+</html>

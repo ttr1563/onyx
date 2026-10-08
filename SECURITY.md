@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Onyx has not made its first stable release. Security fixes are applied to the latest development version until a release support policy is published.
+Onyx is still in the pre-1.0 development series. Security fixes are applied to the latest published patch release and the `develop` branch until a longer-term support policy is published.
 
 ## Reporting a vulnerability
 
