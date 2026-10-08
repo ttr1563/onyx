@@ -63,6 +63,7 @@ onyx run -- systemctl status nginx</code></pre>
         <h2>Onyx v0.1 is an explicit wrapper, not host-wide enforcement.</h2>
         <p>Commands that bypass <code>onyx run</code> are not protected. Root can disable a user-space guard, and code running as the state owner can read the TOTP seed. The project documents these limits instead of claiming physical-key or complete intrusion protection.</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">Read the security model →</a>
+        <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">Operations runbook →</a>
       </section>
     </main>
 
