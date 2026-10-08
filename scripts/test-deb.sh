@@ -14,14 +14,27 @@ case "$repository_path" in
     ;;
 esac
 
-for command in ar grep tar; do
+for command in ar grep tar uname; do
   command -v "$command" >/dev/null || {
     echo "required command not found: $command" >&2
     exit 1
   }
 done
 
-package="$repository_path/osmanthus_${version}-1_amd64.deb"
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "the Debian package must be tested natively on Linux" >&2
+  exit 1
+fi
+case "$(uname -m)" in
+  x86_64) deb_architecture="amd64" ;;
+  aarch64) deb_architecture="arm64" ;;
+  *)
+    echo "unsupported Debian package architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+package="$repository_path/osmanthus_${version}-1_${deb_architecture}.deb"
 test -s "$package"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
@@ -34,6 +47,7 @@ tar -xzf "$temporary/control.tar.gz" -C "$temporary"
 tar -xzf "$temporary/data.tar.gz" -C "$temporary"
 grep -Fx "Package: osmanthus" "$temporary/control"
 grep -Fx "Version: ${version}-1" "$temporary/control"
+grep -Fx "Architecture: $deb_architecture" "$temporary/control"
 grep -Fx "Conflicts: onyx" "$temporary/control"
 grep -Fq "/sys/fs/bpf/osmanthus" "$temporary/prerm"
 grep -Fq "/usr/bin/osmanthus-shell" "$temporary/prerm"

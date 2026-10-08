@@ -5,7 +5,9 @@ release procedure until every gate in the README is closed.
 
 ## Prerequisites
 
-- Linux x86-64 with BTF, BPF LSM enabled and active, and the `bpf_loop` helper.
+- Native Linux x86-64 or ARM64 with BTF, BPF LSM enabled and active, and the
+  `bpf_loop` helper. Each architecture must pass its own package integration
+  gate before release.
 - systemd and a mounted bpffs at `/sys/fs/bpf`.
 - root access for installation and policy changes.
 - a separate RFC 6238 authenticator controlled by the policy administrator.

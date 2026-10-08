@@ -64,7 +64,7 @@ See [architecture](docs/architecture.md), the authoritative
 
 ## Build from source
 
-The current enforced backend targets Linux x86-64 with a kernel that enables
+The current enforced backend targets native Linux x86-64 and ARM64 builds with a kernel that enables
 BPF LSM and the `bpf_loop` helper. Building requires Rust, clang/LLVM, libelf, zlib, and libbpf headers;
 the produced binaries embed the BPF object and do not require clang at runtime.
 
@@ -94,6 +94,10 @@ The local tests inspect the package payload and CLI without requiring a public
 repository. They do not replace a clean-host install, daemon, login-shell,
 upgrade, or uninstall test. The public DNF/APT repositories are not updated by
 these commands.
+The deb builder maps native Linux `x86_64` to Debian `amd64` and `aarch64` to
+`arm64`; it deliberately rejects cross-packaging and unsupported hosts. ARM64
+source build has been verified on Ubuntu 24.04, while installed-package ARM64
+integration remains a release gate.
 The legacy Homebrew formula installs Onyx v0.1.3, not Osmanthus.
 
 ### Migrating from Onyx

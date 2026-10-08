@@ -30,10 +30,18 @@ for command in ar awk cargo du find gzip install md5sum realpath sort tar uname 
     exit 1
   }
 done
-if [[ "$(uname -m)" != "x86_64" ]]; then
-  echo "the initial Debian package must be built on x86_64" >&2
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "the Debian package must be built natively on Linux" >&2
   exit 1
 fi
+case "$(uname -m)" in
+  x86_64) deb_architecture="amd64" ;;
+  aarch64) deb_architecture="arm64" ;;
+  *)
+    echo "unsupported Debian package architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
 
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
@@ -65,7 +73,7 @@ installed_size="$(du -sk --apparent-size "$package_root" | awk '{ print $1 }')"
 cat > "$temporary/control" <<EOF
 Package: osmanthus
 Version: ${version}-1
-Architecture: amd64
+Architecture: $deb_architecture
 Maintainer: Osmanthus maintainers <ttr1563@users.noreply.github.com>
 Installed-Size: ${installed_size}
 Depends: libc6 (>= 2.34), libelf1, libgcc-s1, passwd, zlib1g
@@ -150,7 +158,7 @@ tar \
   -czf "$temporary/data.tar.gz" .
 
 mkdir -p "$output_root"
-package="$output_root/osmanthus_${version}-1_amd64.deb"
+package="$output_root/osmanthus_${version}-1_${deb_architecture}.deb"
 rm -f "$package"
 (
   cd "$temporary"
