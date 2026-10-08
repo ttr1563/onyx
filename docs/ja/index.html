@@ -17,6 +17,7 @@
       <nav>
         <a class="brand" href="../" aria-label="Onyxホーム">ONYX</a>
         <div class="nav-links">
+          <a href="./install.html">導入</a>
           <a href="../" lang="en" hreflang="en">English</a>
           <a href="https://github.com/ttr1563/onyx">GitHub</a>
         </div>
@@ -27,6 +28,7 @@
         <p class="lead">Onyxは危険な操作を実行前に検知・遮断し、別端末のTOTP認証器による承認を要求します。</p>
         <div class="actions">
           <a class="primary" href="#quick-start">クイックスタート</a>
+          <a class="secondary" href="./install.html">導入方法</a>
           <a class="secondary" href="./guide.html">仕組みを読む</a>
           <a class="secondary" href="https://github.com/ttr1563/onyx">ソースを見る</a>
         </div>
@@ -44,7 +46,7 @@
         <div>
           <p class="eyebrow">クイックスタート</p>
           <h2>小さな構成で、明示的に守る。</h2>
-          <p>Amazon Linux 2023では、署名付きOnyxリポジトリを一度登録するとDNFから導入・更新できます。その後、RFC 6238互換の認証アプリを登録します。</p>
+          <p>署名付きDNF/APTリポジトリ、Homebrew、または固定したGit release tagから導入できます。WindowsではWSL 2内のLinux版を利用します。その後、RFC 6238互換の認証アプリを登録します。</p>
         </div>
         <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
 sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
@@ -65,10 +67,25 @@ onyx run -- systemctl status nginx</code></pre>
         </ol>
       </section>
 
-      <section class="warning">
-        <p class="eyebrow">保護境界</p>
-        <h2>Onyx v0.1は明示的なラッパーであり、ホスト全体を強制保護するものではありません。</h2>
-        <p><code>onyx run</code>を経由しないコマンドは保護されません。rootはユーザー空間のガードを無効化でき、Onyx状態の所有者として動くコードはTOTPシードを読み取れます。物理キーや完全な侵入防止を実現済みとは主張しません。</p>
+      <section class="content-grid">
+        <div>
+          <p class="eyebrow">カスタムポリシー</p>
+          <h2>環境固有の承認ルールを追加。</h2>
+          <p>実行ファイル名と必須の引数断片を指定できます。追加ルールは組込みポリシーと併用され、変更は監査ログへ記録されます。</p>
+        </div>
+        <pre><code>onyx policy add \
+  --id production-terraform \
+  --executable terraform \
+  --argument-contains apply \
+  --argument-contains production \
+  --risk critical \
+  --reason "production change"</code></pre>
+      </section>
+
+      <section class="scope">
+        <p class="eyebrow">対象外</p>
+        <h2>v0.1で担保しない範囲。</h2>
+        <p><code>onyx run</code>を経由しない操作、rootによる迂回、物理的な本人確認は担保しません。</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">セキュリティモデルを読む →</a>
         <a href="./guide.html">技術ガイドを読む →</a>
         <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbookを読む →</a>

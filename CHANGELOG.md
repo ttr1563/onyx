@@ -2,6 +2,21 @@
 
 All notable changes to Onyx are documented in this file. Versions follow Semantic Versioning after the initial `0.1.0` release.
 
+## [0.1.2] - 2026-10-08
+
+### Added
+
+- signed `amd64` APT repository packaging for Debian 12 and Ubuntu 22.04 or later;
+- immutable release-tag installation with Cargo;
+- English and Japanese installation guides covering DNF, APT, Homebrew, source, and Windows x64 through WSL 2;
+- APT signing, verification, compatibility, rollback, and key-lifecycle runbook.
+
+### Distribution boundary
+
+- WSL support covers only Linux commands inside WSL that pass through `onyx run`;
+- PowerShell, Command Prompt, native Windows processes, and native macOS command protection remain unsupported;
+- uninstalling a Debian package does not delete Onyx state or audit evidence.
+
 ## [0.1.1] - 2026-10-08
 
 ### Added
@@ -36,5 +51,6 @@ All notable changes to Onyx are documented in this file. Versions follow Semanti
 - TOTP state is readable by its owning operating-system identity and is not a boundary against that identity or root;
 - local-only audit records are not tamper-proof against privileged access.
 
+[0.1.2]: https://github.com/ttr1563/onyx/releases/tag/v0.1.2
 [0.1.1]: https://github.com/ttr1563/onyx/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ttr1563/onyx/releases/tag/v0.1.0

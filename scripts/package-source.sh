@@ -20,7 +20,7 @@ mkdir -p "$(dirname "$output")"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
 
-git ls-files -z | grep -zvE '^(Formula/|docs/rpm/)' > "$temporary/files"
+git ls-files -z | grep -zvE '^(Formula/|docs/(apt|rpm)/)' > "$temporary/files"
 tar \
   --null \
   --files-from="$temporary/files" \
