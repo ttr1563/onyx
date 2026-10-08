@@ -253,9 +253,13 @@ static __always_inline int guard_dentry(struct dentry *start, unsigned int actio
 
     if (bpf_loop(OSMANTHUS_MAX_ANCESTORS, guard_dentry_step, &context, 0) < 0)
         context.decision = -ELOOP;
-    if (context.decision)
-        emit_blocked(&context.event_key);
-    return context.decision;
+    /* Keep LSM exits literal: some verifiers lose signed range after bpf_loop callbacks. */
+    if (context.decision == 0)
+        return 0;
+    emit_blocked(&context.event_key);
+    if (context.decision == -EPERM)
+        return -EPERM;
+    return -ELOOP;
 }
 
 struct mount_guard_context {
@@ -308,9 +312,13 @@ static __always_inline int guard_mount_boundary(struct dentry *start)
 
     if (bpf_loop(OSMANTHUS_MAX_ANCESTORS, guard_mount_step, &context, 0) < 0)
         context.decision = -ELOOP;
-    if (context.decision)
-        emit_blocked(&context.event_key);
-    return context.decision;
+    /* Keep LSM exits literal: some verifiers lose signed range after bpf_loop callbacks. */
+    if (context.decision == 0)
+        return 0;
+    emit_blocked(&context.event_key);
+    if (context.decision == -EPERM)
+        return -EPERM;
+    return -ELOOP;
 }
 
 SEC("lsm/sb_mount")
