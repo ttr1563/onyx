@@ -51,6 +51,7 @@ sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
 sudo dnf install onyx
 
 onyx init --account production-web-01
+sudo onyx policy init --account production-policy-admin
 onyx run -- systemctl status nginx</code></pre>
       </section>
 
@@ -68,7 +69,7 @@ onyx run -- systemctl status nginx</code></pre>
       <section class="warning">
         <p class="eyebrow">Know the boundary</p>
         <h2>Onyx v0.1 is an explicit wrapper, not host-wide enforcement.</h2>
-        <p>Commands that bypass <code>onyx run</code> are not protected. Root can disable a user-space guard, and code running as the state owner can read the TOTP seed. The project documents these limits instead of claiming physical-key or complete intrusion protection.</p>
+        <p>The root-owned system policy prevents the protected identity from changing custom rules. Commands that bypass <code>onyx run</code> are not protected; root can disable the guard; and the state owner still controls execution events, permits, and its execution TOTP seed.</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">Read the security model →</a>
         <a href="./guide.html">Read the technical guide →</a>
         <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">Operations runbook →</a>

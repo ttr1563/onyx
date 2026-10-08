@@ -51,6 +51,7 @@ sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
 sudo dnf install onyx
 
 onyx init --account production-web-01
+sudo onyx policy init --account production-policy-admin
 onyx run -- systemctl status nginx</code></pre>
       </section>
 
@@ -68,7 +69,7 @@ onyx run -- systemctl status nginx</code></pre>
       <section class="warning">
         <p class="eyebrow">保護境界</p>
         <h2>Onyx v0.1は明示的なラッパーであり、ホスト全体を強制保護するものではありません。</h2>
-        <p><code>onyx run</code>を経由しないコマンドは保護されません。rootはユーザー空間のガードを無効化でき、Onyx状態の所有者として動くコードはTOTPシードを読み取れます。物理キーや完全な侵入防止を実現済みとは主張しません。</p>
+        <p>root所有のsystem policyにより、保護対象ユーザーは追加ルールを変更できません。ただし<code>onyx run</code>外は保護されず、rootはガードを無効化でき、状態所有者は実行event、permit、実行承認用TOTP seedを操作できます。</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">セキュリティモデルを読む →</a>
         <a href="./guide.html">技術ガイドを読む →</a>
         <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbookを読む →</a>

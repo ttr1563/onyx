@@ -5,7 +5,7 @@ Onyx is a lightweight command guard that detects risky operations on Linux serve
 > [!IMPORTANT]
 > Onyx v0.1 protects only commands launched through `onyx run -- ...`. It is a safety boundary for operator mistakes and constrained automation, not a host-wide EDR. A user who can bypass Onyx or an attacker with root access can disable this protection.
 >
-> TOTP does not provide meaningful resistance to code running as the operating-system identity that owns the Onyx state: that identity can read the verifier seed. Use a dedicated, constrained identity to limit impact. Administrator-owned verification and hardware-backed asymmetric approval require the planned broker design and are not claimed by v0.1.
+> A root-owned system policy prevents the protected identity from changing custom rule definitions. The protected identity still owns command events, permits, and its execution-approval TOTP seed. Onyx therefore does not claim to contain a complete compromise of that identity. Use a dedicated, constrained identity to limit impact.
 
 ## What it does
 
@@ -15,6 +15,7 @@ Onyx is a lightweight command guard that detects risky operations on Linux serve
 - expires approvals after 30 seconds and consumes each approval once;
 - rejects reuse of a TOTP code in the same time step;
 - writes redacted, one-record-per-line JSON audit logs locally;
+- stores custom rule definitions as a root-owned, integrity-checked system policy;
 - stores state with owner-only permissions and rejects symbolic links to sensitive state files.
 
 Onyx does not upload logs or require an AWS, Google, or other cloud account. Google Authenticator, 1Password, Aegis, and other RFC 6238-compatible applications can scan its enrollment URI.
@@ -91,6 +92,14 @@ Default state paths:
 
 The state directory is mode `0700`; configuration, events, authentication state, locks, and audit files are mode `0600`.
 
+Initialize the root-owned system policy separately. This creates an independent administrator TOTP enrollment used only for policy changes:
+
+```console
+sudo onyx policy init --account production-policy-admin
+```
+
+Store this enrollment in an authenticator controlled by the policy administrator, not by the protected automation identity. The policy itself is readable for inspection at `/etc/onyx/policy.json`, but only root can replace it.
+
 ## Protect a command
 
 Safe commands run immediately and preserve the child process exit code:
@@ -151,12 +160,12 @@ The initial policy blocks:
 
 These rules are intentionally small and auditable. They are not behavioral malware detection and cannot understand arbitrary interpreter code. Wrapper commands such as `sudo` and shell `-c` strings are therefore treated conservatively and may require approval even when the nested operation is harmless.
 
-### Add a site-specific rule
+### Manage site-specific rules
 
-Custom rules match an executable basename and require every supplied argument fragment to occur. Adding a rule can only increase enforcement; v0.1 deliberately provides no unauthenticated CLI command to remove or weaken one.
+Custom rules match an executable basename and require every supplied argument fragment to occur. Policy mutation requires both root privileges and the independent policy-administrator TOTP code.
 
 ```console
-onyx policy add \
+sudo onyx policy add \
   --id production-terraform \
   --executable terraform \
   --argument-contains apply \
@@ -166,9 +175,15 @@ onyx policy add \
 
 onyx policy list
 onyx check -- terraform apply production.tfplan
+
+sudo onyx policy remove --id production-terraform
 ```
 
-Rules are stored in the owner-only `policy.json`. Each `--argument-contains` value is a literal substring, not a regular expression. Directly editing or deleting the policy file is outside the protected CLI boundary and requires the same operating-system controls as the rest of Onyx state.
+Each mutation prompts for the policy-administrator code without terminal echo. Onyx does not provide a general-purpose editor: structured `add` and `remove` operations validate the complete policy, write it atomically, and append an administrator audit record.
+
+Rules are stored in `/etc/onyx/policy.json` as root-owned mode `0444` JSON with a SHA-256 companion file. On every `check` and `run`, Onyx verifies the directory, ownership, modes, regular-file type, size, schema, and digest. A missing or inconsistent initialized system policy fails closed. The digest detects inconsistency; root ownership is what prevents a normal user from replacing both files.
+
+For compatibility, installations without `/etc/onyx` continue to read the older user-owned `policy.json`. Run `sudo onyx policy init` to establish the protected boundary; after that, the system policy is authoritative. Each `--argument-contains` value is a literal substring, not a regular expression.
 
 ## Audit log
 
@@ -224,12 +239,12 @@ After confirming that no audit retention requirement applies, an administrator m
 Read [SECURITY.md](SECURITY.md) and [the architecture document](docs/architecture.md) before production use. Important boundaries:
 
 - commands not launched with `onyx run` are outside protection;
-- the same OS identity that owns writable state can replace or delete it;
+- the protected OS identity cannot alter initialized system-policy rules, but it still owns command events, permits, execution-approval state, and local audit logs;
 - root can bypass, modify, or remove this user-space guard;
 - local-only logs can be deleted by a sufficiently privileged attacker;
 - policy matching cannot detect every equivalent or obfuscated operation.
 
-Run automation under a dedicated constrained service account and keep ordinary workloads unprivileged. Do not treat v0.1 as a security boundary against that account itself; administrator-owned verification requires the future broker design.
+Run automation under a dedicated constrained service account and keep ordinary workloads unprivileged. System policy protects rule definitions from that account; containment of a fully compromised account still requires a privileged broker or another external enforcement boundary.
 
 ## Development
 

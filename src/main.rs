@@ -11,7 +11,9 @@ use onyx_guard::audit::{self, AuditRecord};
 use onyx_guard::auth;
 use onyx_guard::config::{self, Config};
 use onyx_guard::policy;
+use onyx_guard::policy::PolicyFile;
 use onyx_guard::state::{self, EventStatus, GuardEvent, StateLock};
+use onyx_guard::system_policy;
 use onyx_guard::{OnyxError, Result};
 use qrcode::QrCode;
 use time::OffsetDateTime;
@@ -61,7 +63,7 @@ enum Commands {
         #[arg(long, default_value_t = 20)]
         limit: usize,
     },
-    /// List or add site-specific command policy rules.
+    /// Manage site-specific command policy rules.
     Policy {
         #[command(subcommand)]
         command: PolicyCommands,
@@ -70,9 +72,19 @@ enum Commands {
 
 #[derive(Debug, Subcommand)]
 enum PolicyCommands {
+    /// Initialize root-owned system policy and its administrator authenticator.
+    Init {
+        #[arg(long, default_value = "Onyx Policy")]
+        issuer: String,
+        #[arg(long)]
+        account: Option<String>,
+        /// Do not render a terminal QR code.
+        #[arg(long)]
+        no_qr: bool,
+    },
     /// List custom policy rules. Built-in rules are always active.
     List,
-    /// Add a custom rule. Every argument fragment must match.
+    /// Add a system rule after root and authenticator verification.
     Add {
         #[arg(long)]
         id: String,
@@ -84,6 +96,11 @@ enum PolicyCommands {
         risk: CliRisk,
         #[arg(long)]
         reason: String,
+    },
+    /// Remove a system rule after root and authenticator verification.
+    Remove {
+        #[arg(long)]
+        id: String,
     },
 }
 
@@ -141,8 +158,17 @@ fn initialize(root: &Path, issuer: String, account: Option<String>, no_qr: bool)
     let record = AuditRecord::new("initialized")?;
     audit::append(root, &record)?;
 
-    let uri = config.totp_uri();
     println!("Onyx initialized at {}", root.display());
+    print_enrollment(&config, no_qr)?;
+    println!("Audit log: {}", root.join(config::AUDIT_FILE).display());
+    println!("Run commands with: onyx run -- <command>");
+    let record = AuditRecord::new("enrollment_displayed")?;
+    audit::append(root, &record)?;
+    Ok(0)
+}
+
+fn print_enrollment(config: &Config, no_qr: bool) -> Result<()> {
+    let uri = config.totp_uri();
     if !no_qr {
         let code = QrCode::new(uri.as_bytes())
             .map_err(|error| OnyxError::InvalidState(format!("failed to render QR: {error}")))?;
@@ -154,23 +180,14 @@ fn initialize(root: &Path, issuer: String, account: Option<String>, no_qr: bool)
         println!("\nScan this QR code with a TOTP authenticator:\n{rendered}");
     }
     println!("TOTP URI (shown once): {uri}");
-    println!("Audit log: {}", root.join(config::AUDIT_FILE).display());
-    println!("Run commands with: onyx run -- <command>");
-    let record = AuditRecord::new("enrollment_displayed")?;
-    audit::append(root, &record)?;
-    Ok(0)
+    Ok(())
 }
 
 fn check_command(root: &Path, command: Vec<OsString>) -> Result<u8> {
     if command.is_empty() {
         return Err(OnyxError::MissingCommand);
     }
-    let custom = if root.join(config::POLICY_FILE).exists() {
-        config::validate_state_root(root)?;
-        policy::PolicyFile::load(root)?.rules
-    } else {
-        Vec::new()
-    };
+    let custom = load_effective_policy(root)?.rules;
     let findings = policy::evaluate_with_rules(&command, &custom);
     if findings.is_empty() {
         println!("allow: no built-in rule matched");
@@ -193,7 +210,7 @@ fn run_command(root: &Path, command: Vec<OsString>) -> Result<u8> {
     let now = OffsetDateTime::now_utc().unix_timestamp();
     let digest = state::command_digest(&command);
     let summary = policy::summarize(&command);
-    let policy_file = policy::PolicyFile::load(root)?;
+    let policy_file = load_effective_policy(root)?;
     let findings = policy::evaluate_with_rules(&command, &policy_file.rules);
 
     if findings.is_empty() {
@@ -297,6 +314,14 @@ fn status(root: &Path) -> Result<u8> {
     println!("Authenticator: TOTP ({})", config.account);
     println!("Pending events: {pending}");
     println!("Active one-time permits: {approved}");
+    println!(
+        "System policy: {}",
+        if system_policy::load()?.is_some() {
+            "root-managed"
+        } else {
+            "not initialized (legacy user policy)"
+        }
+    );
     println!("Audit log: {}", root.join(config::AUDIT_FILE).display());
     Ok(0)
 }
@@ -325,10 +350,21 @@ fn logs(root: &Path, limit: usize) -> Result<u8> {
 }
 
 fn policy_command(root: &Path, command: PolicyCommands) -> Result<u8> {
-    config::load_config(root)?;
     match command {
+        PolicyCommands::Init {
+            issuer,
+            account,
+            no_qr,
+        } => initialize_system_policy(issuer, account, no_qr),
         PolicyCommands::List => {
-            let policy = policy::PolicyFile::load(root)?;
+            let (source, policy) = match system_policy::load()? {
+                Some(policy) => ("system", policy),
+                None => {
+                    config::load_config(root)?;
+                    ("legacy user", policy::PolicyFile::load(root)?)
+                }
+            };
+            println!("Policy source: {source}");
             if policy.rules.is_empty() {
                 println!("No custom rules. Built-in rules remain active.");
             }
@@ -350,27 +386,84 @@ fn policy_command(root: &Path, command: PolicyCommands) -> Result<u8> {
             argument_contains,
             risk,
             reason,
-        } => {
-            let _lock = StateLock::acquire(root)?;
-            let mut policy_file = policy::PolicyFile::load(root)?;
+        } => mutate_system_policy("add", |policy_file| {
             let rule = policy::CustomRule {
-                id,
-                executable,
-                argument_contains,
+                id: id.clone(),
+                executable: executable.clone(),
+                argument_contains: argument_contains.clone(),
                 risk: risk.into(),
-                reason,
+                reason: reason.clone(),
             };
             let rule_id = rule.id.clone();
             policy_file.add(rule)?;
-            policy_file.save(root)?;
-            let rule_ids = [rule_id.clone()];
-            let mut record = AuditRecord::new("policy_rule_added")?;
-            record.rule_ids = Some(&rule_ids);
-            audit::append(root, &record)?;
-            println!("Added custom policy rule: {rule_id}");
-            Ok(0)
-        }
+            Ok((rule_id, "policy_rule_added", "Added system policy rule"))
+        }),
+        PolicyCommands::Remove { id } => mutate_system_policy("remove", |policy_file| {
+            let removed = policy_file.remove(&id)?;
+            Ok((
+                removed.id,
+                "policy_rule_removed",
+                "Removed system policy rule",
+            ))
+        }),
     }
+}
+
+fn load_effective_policy(root: &Path) -> Result<PolicyFile> {
+    if let Some(policy) = system_policy::load()? {
+        return Ok(policy);
+    }
+    if root.join(config::POLICY_FILE).exists() {
+        config::validate_state_root(root)?;
+        return policy::PolicyFile::load(root);
+    }
+    Ok(PolicyFile::default())
+}
+
+fn initialize_system_policy(issuer: String, account: Option<String>, no_qr: bool) -> Result<u8> {
+    system_policy::require_root()?;
+    let account = account.unwrap_or_else(default_account);
+    let admin_config = Config::new(issuer, account)?;
+    system_policy::initialize(&admin_config)?;
+    let mut record = AuditRecord::new("system_policy_initialized")?;
+    record.result = Some(0);
+    audit::append(system_policy::admin_state_dir(), &record)?;
+
+    println!(
+        "System policy initialized at {}",
+        system_policy::SYSTEM_POLICY_DIR
+    );
+    print_enrollment(&admin_config, no_qr)?;
+    println!("Policy changes require sudo and this authenticator.");
+    Ok(0)
+}
+
+fn mutate_system_policy(
+    action: &str,
+    mutation: impl Fn(&mut PolicyFile) -> Result<(String, &'static str, &'static str)>,
+) -> Result<u8> {
+    system_policy::require_root()?;
+    let admin_root = system_policy::admin_state_dir();
+    let admin_config = config::load_config(admin_root).map_err(|error| match error {
+        OnyxError::NotInitialized => OnyxError::SystemPolicyNotInitialized,
+        other => other,
+    })?;
+    let mut preview = system_policy::load()?.ok_or(OnyxError::SystemPolicyNotInitialized)?;
+    let (rule_id, _, _) = mutation(&mut preview)?;
+    println!("System policy {action}: {rule_id}");
+    let code = Zeroizing::new(rpassword::prompt_password("Authenticator code: ")?);
+    let now = OffsetDateTime::now_utc().unix_timestamp();
+    auth::with_verified_code(admin_root, &admin_config, &code, now, || {
+        let mut current = system_policy::load()?.ok_or(OnyxError::SystemPolicyNotInitialized)?;
+        let (rule_id, audit_action, success_message) = mutation(&mut current)?;
+        system_policy::save(&current)?;
+        let rule_ids = [rule_id.clone()];
+        let mut record = AuditRecord::new(audit_action)?;
+        record.rule_ids = Some(&rule_ids);
+        audit::append(admin_root, &record)?;
+        println!("{success_message}: {rule_id}");
+        Ok(0)
+    })
 }
 
 fn execute_and_record(
