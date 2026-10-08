@@ -17,6 +17,7 @@
       <nav>
         <a class="brand" href="./" aria-label="Onyx home">ONYX</a>
         <div class="nav-links">
+          <a href="./install.html">Install</a>
           <a href="./ja/" lang="ja" hreflang="ja">日本語</a>
           <a href="https://github.com/ttr1563/onyx">GitHub</a>
         </div>
@@ -27,6 +28,7 @@
         <p class="lead">Onyx detects risky operations, blocks them before execution, and requires approval from a separate TOTP authenticator.</p>
         <div class="actions">
           <a class="primary" href="#quick-start">Quick start</a>
+          <a class="secondary" href="./install.html">Install options</a>
           <a class="secondary" href="./guide.html">How Onyx works</a>
           <a class="secondary" href="https://github.com/ttr1563/onyx">View source</a>
         </div>
@@ -44,7 +46,7 @@
         <div>
           <p class="eyebrow">Quick start</p>
           <h2>Small surface. Explicit control.</h2>
-          <p>On Amazon Linux 2023, add the signed Onyx repository once and install with DNF. Then enroll any RFC 6238-compatible authenticator.</p>
+          <p>Install from the signed DNF or APT repository, Homebrew, or an immutable Git release tag. Windows users run the Linux build inside WSL 2. Then enroll any RFC 6238-compatible authenticator.</p>
         </div>
         <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
 sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
@@ -66,10 +68,26 @@ onyx run -- systemctl status nginx</code></pre>
         </ol>
       </section>
 
-      <section class="warning">
-        <p class="eyebrow">Know the boundary</p>
-        <h2>Onyx v0.1 is an explicit wrapper, not host-wide enforcement.</h2>
-        <p>The root-owned system policy prevents the protected identity from changing custom rules. Commands that bypass <code>onyx run</code> are not protected; root can disable the guard; and the state owner still controls execution events, permits, and its execution TOTP seed.</p>
+      <section class="content-grid">
+        <div>
+          <p class="eyebrow">Custom policy</p>
+          <h2>Root-owned rules for your environment.</h2>
+          <p>Initialize the system policy once. Adding or removing a rule then requires root and the separate policy-administrator TOTP.</p>
+        </div>
+        <pre><code>sudo onyx policy init --account production-policy-admin
+sudo onyx policy add \
+  --id production-terraform \
+  --executable terraform \
+  --argument-contains apply \
+  --argument-contains production \
+  --risk critical \
+  --reason "production change"</code></pre>
+      </section>
+
+      <section class="scope">
+        <p class="eyebrow">Scope</p>
+        <h2>What v0.1 does not cover.</h2>
+        <p>The root-owned policy prevents normal-user rule changes. Onyx does not cover commands that bypass <code>onyx run</code>, root-level bypass, state-owner changes to events or permits, or physical-presence verification.</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">Read the security model →</a>
         <a href="./guide.html">Read the technical guide →</a>
         <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">Operations runbook →</a>

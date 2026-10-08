@@ -16,9 +16,9 @@
     <header class="hero">
       <nav>
         <a class="brand" href="./" aria-label="Onyxホーム">ONYX</a>
-        <div class="nav-links"><a href="../guide.html" lang="en" hreflang="en">English</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div>
+        <div class="nav-links"><a href="./install.html">導入</a><a href="../guide.html" lang="en" hreflang="en">English</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div>
       </nav>
-      <div class="docs-hero"><p class="eyebrow">技術ガイド</p><h1>Onyxは何をしているのか。</h1><p class="lead">コマンド実行前の判定、一度限りの承認、ローカル証跡、そして運用時に守るべき限界を説明します。</p></div>
+      <div class="docs-hero"><p class="eyebrow">技術ガイド</p><h1>Onyxは何をしているのか。</h1><p class="lead">コマンド実行前の判定、一度限りの承認、追加ルール、ローカル監査ログを説明します。</p></div>
     </header>
     <main class="docs">
       <section>
@@ -52,16 +52,41 @@
           <div class="node"><strong>Permit</strong><span>完全一致digest、有効30秒</span></div>
           <div class="node"><strong>消費済み</strong><span>子プロセス開始前に削除</span></div>
         </div>
-        <p>TOTPは共有秘密方式です。登録済み認証器を持たない操作主体に時間的な壁を作れますが、物理的な在席証明ではありません。Onyx状態の所有者またはrootとして動くコードは、サーバー側seedを読めます。ハードウェア署名を使う非対称承認は将来の特権broker構想であり、現行版の機能とは主張しません。</p>
+        <p>TOTP承認には登録済みのコードが必要です。物理的な本人確認と、state所有者またはrootからのseed保護は担保しません。hardware key承認はv0.1の対象外です。</p>
       </section>
       <section>
-        <h2>ポリシーと解釈の難しいコマンド</h2>
-        <p>組込みポリシーは、再帰的削除、filesystem初期化、raw device書込み、shutdown、権限wrapper、shell文字列、破壊的な<code>find</code>、root全体の権限変更、秘密情報らしき転送、decodeと<code>eval</code>の組合せなど、少数の監査しやすいパターンを対象にします。<code>sudo onyx policy init</code>でsystem policyを初期化すると、構造化された<code>add</code>と<code>remove</code>にはroot権限とpolicy管理者用TOTPの両方が必要です。</p>
+        <h2>root管理の承認ルールを追加する</h2>
+        <p>組込みポリシーは、再帰的削除、filesystem初期化、raw device書込み、shutdown、権限wrapper、shell文字列、破壊的な<code>find</code>、root全体の権限変更、秘密情報らしき転送、decodeと<code>eval</code>の組合せを対象にします。system policyを初期化してから、環境固有ルールを追加します。</p>
+        <pre><code>sudo onyx policy init --account production-policy-admin
+
+sudo onyx policy add \
+  --id production-terraform \
+  --executable terraform \
+  --argument-contains apply \
+  --argument-contains production \
+  --risk critical \
+  --reason "production infrastructure change"
+
+onyx policy list
+onyx check -- terraform apply production.tfplan
+
+sudo onyx policy remove --id production-terraform</code></pre>
+        <p>policy変更にはroot権限と別管理のpolicy管理者TOTPが必要です。指定した引数断片はすべて一致した場合に発動します。追加ルールは承認必須の範囲を広げ、組込みルールを無効化しません。絶対に承認できない恒久deny modeはv0.1にありません。</p>
+        <pre><code>{
+  "schema_version": 1,
+  "rules": [{
+    "id": "production-terraform",
+    "executable": "terraform",
+    "argument_contains": ["apply", "production"],
+    "risk": "critical",
+    "reason": "production infrastructure change"
+  }]
+}</code></pre>
         <p>Onyxは意味解析型のmalware検出器ではありません。shell文字列、interpreter、alias、難読化payload、同等のsystem callは意図を隠せます。そのため安全な操作でも保守的に承認を求める場合があり、wrapper外の操作は見えません。</p>
       </section>
       <section>
         <h2>状態とローカル証跡</h2>
-        <p>rootは<code>/var/lib/onyx</code>、一般ユーザーはXDG state directoryを使います。directoryは<code>0700</code>、機密fileは<code>0600</code>です。symlinkと想定外のfile種別を拒否し、JSON更新は同一directoryの一時file、<code>fsync</code>、rename、親directoryの<code>fsync</code>で行います。</p>
+        <p>rootは<code>/var/lib/onyx</code>、一般ユーザーはXDG state directoryを使います。directoryは<code>0700</code>、state fileは<code>0600</code>です。symlinkと想定外のfile種別を拒否し、JSON更新は同一directoryの一時file、<code>fsync</code>、rename、親directoryの<code>fsync</code>で行います。</p>
         <pre><code>onyx/
 ├── .lock
 ├── audit.jsonl
@@ -73,12 +98,12 @@
 ├── policy.json        root:root 0444
 ├── policy.sha256      root:root 0444
 └── admin/             root専用policy TOTP・監査状態</code></pre>
-        <p>system policyはcheck・runのたびに検証します。対になるfileの欠損、種別・所有者・modeの不正、schema不正、digest不一致では処理を停止します。digestは不整合を検出し、一般ユーザーによる置換はOSの所有権で防ぎます。</p>
-        <p>監査記録にはUTC時刻、action、event ID、command digest、redact済み概要、該当rule ID、必要な終了状態を含めます。stdout、stderr、環境変数、TOTP seed、入力コードは記録しません。ただしrootはローカル証跡を変更できます。改ざん耐性が必要なら既存collectorから外部保存してください。</p>
+        <p>system policyは暗号化せず、人が読める設定として保存するため、credentialを記載しないでください。check・runのたびに、対になるfile、種別、所有者、mode、schema、digestを検証し、不整合では処理を停止します。digestは不整合を検出し、一般ユーザーによる置換はOSの所有権で防ぎます。</p>
+        <p>監査記録にはUTC時刻、action、event ID、command digest、redact済み概要、該当rule ID、必要な終了状態を含めます。stdout、stderr、環境変数、TOTP seed、入力コードは記録しません。</p>
       </section>
       <section>
         <h2>導入・運用フロー</h2>
-        <ol><li>Onyxを導入し、制約付きOS identityで実行状態を初期化します。</li><li><code>sudo onyx policy init</code>を実行し、別管理のpolicy管理者認証器を登録します。</li><li>時刻同期、権限、policy一覧、安全な実行、非実行の遮断checkを確認します。</li><li>automationの入口を<code>onyx run -- ...</code>へ変更します。</li><li>失敗を監視し、incident作業前に両方の状態treeを保全します。</li></ol>
+        <ol><li>署名済みRPMまたはDebian package、あるいは文書化されたsource経路から導入し、制約付きOS identityで実行状態を初期化します。</li><li><code>sudo onyx policy init</code>を実行し、別管理のpolicy管理者認証器を登録します。</li><li>時刻同期、権限、policy一覧、安全な実行、非実行の遮断checkを確認します。</li><li>automationの入口を<code>onyx run -- ...</code>へ変更します。</li><li>失敗を監視し、incident作業前に両方の状態treeを保全します。</li></ol>
         <p>本番利用前に<a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbook</a>、<a href="https://github.com/ttr1563/onyx/blob/main/docs/architecture.md">architecture</a>、<a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">security policy</a>を確認してください。</p>
       </section>
     </main>

@@ -1,6 +1,6 @@
 [package]
 name = "onyx-guard"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.91"
 license = "MIT"
@@ -10,7 +10,7 @@ homepage = "https://ttr1563.github.io/onyx/"
 readme = "README.md"
 keywords = ["security", "cli", "linux", "totp", "audit"]
 categories = ["command-line-utilities", "authentication"]
-exclude = ["docs/rpm/**", "Formula/**"]
+exclude = ["docs/apt/**", "docs/rpm/**", "Formula/**"]
 
 [[bin]]
 name = "onyx"

@@ -33,13 +33,13 @@ Build on Amazon Linux 2023 with Rust 1.91 or later, RPM build tools, and
 `createrepo_c`. Run resource checks first on shared or burstable hosts.
 
 ```console
-scripts/build-rpm.sh 0.1.1 docs/rpm/al2023
+scripts/build-rpm.sh 0.1.2 docs/rpm/al2023
 ```
 
 The script performs a locked release build and creates the architecture RPM.
 It does not sign or publish anything. The package owns the executable,
 documentation, license, and logrotate configuration. It deliberately does not
-own or remove `/var/lib/onyx`.
+own or remove `/var/lib/onyx` or `/etc/onyx`.
 
 ## Sign and generate metadata
 

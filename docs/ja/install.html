@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow">
+    <meta name="description" content="Amazon Linux、Debian、Ubuntu、macOS、WindowsのWSL 2へOnyxを導入する方法。">
+    <link rel="canonical" href="https://ttr1563.github.io/onyx/ja/install.html">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/install.html">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/install.html">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/install.html">
+    <link rel="stylesheet" href="../styles.css">
+    <title>Onyxの導入</title>
+  </head>
+  <body>
+    <header class="hero">
+      <nav><a class="brand" href="./" aria-label="Onyxホーム">ONYX</a><div class="nav-links"><a href="./guide.html">技術ガイド</a><a href="../install.html" lang="en" hreflang="en">English</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div></nav>
+      <div class="docs-hero"><p class="eyebrow">導入</p><h1>検証済みの経路を選ぶ。</h1><p class="lead">運用環境では署名付きLinuxリポジトリを基本とし、native packageがない環境ではHomebrewまたは固定したrelease tagを利用します。</p></div>
+    </header>
+    <main class="docs">
+      <section>
+        <h2>対応表</h2>
+        <table class="state-table"><thead><tr><th>環境</th><th>導入方法</th><th>保護範囲</th></tr></thead><tbody>
+          <tr><td>Amazon Linux 2023 x86_64</td><td>署名付きDNF repository</td><td>対応済みLinux target</td></tr>
+          <tr><td>Debian 12 / Ubuntu 22.04以降 amd64</td><td>署名付きAPT repository</td><td>対応済みLinux target</td></tr>
+          <tr><td>その他のLinux</td><td>Homebrewまたはrelease tag指定Cargo</td><td>build可能、distributionごとの検証状況は異なる</td></tr>
+          <tr><td>macOS</td><td>HomebrewまたはCargo</td><td>build経路のみ。macOS native保護は未検証</td></tr>
+          <tr><td>Windows 10/11 x64</td><td>WSL 2導入後にLinux手順</td><td>WSL内のみ。PowerShellとWindows processは対象外</td></tr>
+        </tbody></table>
+        <p class="callout"><strong>全環境で共通の境界：</strong><code>onyx run -- ...</code>から明示的に起動したコマンドだけを判定します。</p>
+      </section>
+      <section>
+        <h2>Amazon Linux 2023</h2>
+        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
+sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
+sudo dnf install onyx</code></pre>
+        <p>想定fingerprintは<code>E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C</code>です。更新は<code>sudo dnf upgrade onyx</code>です。</p>
+      </section>
+      <section>
+        <h2>Debian 12・Ubuntu 22.04以降</h2>
+        <p>一般ユーザーで公開鍵を取得してfingerprintを確認した後、鍵と適用範囲を限定したdeb822 sourceを配置します。</p>
+        <pre><code>curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.asc
+gpg --show-keys --with-fingerprint onyx.asc
+# Expected: E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C
+sudo install -D -m0644 onyx.asc /etc/apt/keyrings/onyx.asc
+
+curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.sources
+sudo install -m0644 onyx.sources /etc/apt/sources.list.d/onyx.sources
+rm onyx.asc onyx.sources
+
+sudo apt-get update
+sudo apt-get install onyx</code></pre>
+        <p>更新は<code>sudo apt-get update &amp;&amp; sudo apt-get install --only-upgrade onyx</code>です。sourceの<code>Signed-By</code>により、公開鍵をAPT全体のtrust anchorにはしません。</p>
+      </section>
+      <section>
+        <h2>Homebrew</h2>
+        <pre><code>brew tap ttr1563/onyx https://github.com/ttr1563/onyx.git
+brew install ttr1563/onyx/onyx</code></pre>
+        <p>検証済みの保護対象はLinuxです。FormulaはmacOSでbuild可能な想定ですが、macOS nativeのコマンド保護は現行版の対応範囲ではありません。</p>
+      </section>
+      <section>
+        <h2>Gitから導入</h2>
+        <p>変更されないrelease tagとlockfileを指定します。</p>
+        <pre><code>cargo install \
+  --git https://github.com/ttr1563/onyx.git \
+  --tag v0.1.2 \
+  --locked</code></pre>
+        <p>Rust 1.91以降とplatformのC toolchainが必要です。開発時は同じtagをcloneし、<code>cargo install --path . --locked</code>を実行します。再現可能なserver導入に可変branchは使用しません。</p>
+      </section>
+      <section>
+        <h2>Windows x64はWSL 2経由</h2>
+        <p>管理者PowerShellでWSLを導入し、求められた場合は再起動します。</p>
+        <pre><code>wsl --install</code></pre>
+        <p>導入されたUbuntu terminalを開き、上記APT手順を実行します。Onyxの初期化と保護対象commandもLinux terminal内で実行してください。version要件はMicrosoftの<a href="https://learn.microsoft.com/windows/wsl/install">WSL導入ガイド</a>を参照してください。PowerShell、Command Prompt、Windows service、WSL外のnative <code>.exe</code>は対象外です。</p>
+      </section>
+      <section>
+        <h2>確認と削除</h2>
+        <pre><code>onyx --version
+onyx check -- rm -rf /example
+# 想定結果: 遮断され、終了コード77</code></pre>
+        <p>導入経路に応じて<code>sudo dnf remove onyx</code>、<code>sudo apt-get remove onyx</code>、または<code>cargo uninstall onyx-guard</code>を使います。package削除後も<code>/var/lib/onyx</code>の実行状態と、<code>/etc/onyx</code>のpolicy・管理認証状態・監査証跡は意図的に残します。保持・incident要件を確認してから、必要な場合だけ別操作で削除してください。</p>
+      </section>
+    </main>
+    <footer><p>OnyxはMIT Licenseのオープンソースです。</p><a href="./">Onyxへ戻る</a></footer>
+  </body>
+</html>
