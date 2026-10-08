@@ -1,0 +1,44 @@
+[package]
+name = "onyx-guard"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.91"
+license = "MIT"
+description = "A lightweight command guard for Linux servers"
+repository = "https://github.com/ttr1563/onyx"
+homepage = "https://ttr1563.github.io/onyx/"
+readme = "README.md"
+keywords = ["security", "cli", "linux", "totp", "audit"]
+categories = ["command-line-utilities", "authentication"]
+
+[[bin]]
+name = "onyx"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+data-encoding = "2.9"
+hmac = "0.12"
+libc = "0.2"
+qrcode = { version = "0.14", default-features = false }
+rand = "0.9"
+rpassword = "7.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha1 = "0.10"
+sha2 = "0.10"
+thiserror = "2.0"
+time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
+urlencoding = "2.1"
+uuid = { version = "1.18", features = ["v4"] }
+zeroize = "1.8"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.23"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
