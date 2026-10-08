@@ -223,6 +223,10 @@ The enforced daemon writes one JSON object per line to
 Shipping to S3, CloudWatch, a SIEM, or another service is intentionally external
 to Osmanthus.
 
+The packaged systemd sandbox keeps policy files read-only. Its only writable
+exception below `/etc/osmanthus` is `/etc/osmanthus/admin`, where the daemon
+atomically updates TOTP replay-prevention and lockout state.
+
 ## Data and database protection
 
 Filesystem protection alone does not prevent credential theft or data

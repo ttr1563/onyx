@@ -62,6 +62,12 @@ The policy is integrity-protected, not encrypted. Rules and paths are not
 secrets. The TOTP seed is stored below `/etc/osmanthus/admin` with root-only access.
 Linux root remains outside the threat boundary.
 
+The packaged systemd sandbox keeps `/etc/osmanthus` read-only except for
+`/etc/osmanthus/admin`. The daemon needs that narrow writable directory to
+atomically persist TOTP replay counters, failed-attempt counters, and lockout
+state. Policy files remain outside the writable exception and can only be
+replaced through the authenticated root CLI workflow.
+
 ## Maintenance
 
 A maintenance lease contains a UUID, canonical scope, operation classes,

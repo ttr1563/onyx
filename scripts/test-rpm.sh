@@ -34,6 +34,10 @@ test -x "$install_root/usr/bin/osmanthusd"
 test -x "$install_root/usr/bin/osmanthus-shell"
 test -s "$install_root/usr/lib/systemd/system/osmanthusd.service"
 ! grep -Fqx "PrivateTmp=yes" "$install_root/usr/lib/systemd/system/osmanthusd.service"
+grep -Fqx "ReadWritePaths=/run/osmanthus /var/log/osmanthus /sys/fs/bpf /etc/osmanthus/admin" \
+  "$install_root/usr/lib/systemd/system/osmanthusd.service"
+! grep -Eq '^ReadWritePaths=(/etc/osmanthus([[:space:]]|$)|.*[[:space:]]/etc/osmanthus([[:space:]]|$))' \
+  "$install_root/usr/lib/systemd/system/osmanthusd.service"
 test -s "$install_root/etc/logrotate.d/osmanthus"
 test -s "$install_root/usr/share/doc/osmanthus/ssm.md"
 grep -Fq "caller cgroup" "$install_root/usr/share/doc/osmanthus/README.md"

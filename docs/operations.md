@@ -30,6 +30,11 @@ sudo systemctl enable --now osmanthusd
 osmanthus daemon status
 ```
 
+The packaged service keeps the policy files read-only while allowing only
+`/etc/osmanthus/admin` inside that tree to be written by the daemon. This is
+required for TOTP replay prevention and lockout state. Do not broaden the
+systemd `ReadWritePaths` entry to all of `/etc/osmanthus`.
+
 Initialization prints the TOTP enrollment once. While the current authenticator
 is available, rotate it and issue a new QR/URI with:
 

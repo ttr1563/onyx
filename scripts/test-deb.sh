@@ -56,6 +56,10 @@ test -x "$temporary/usr/bin/osmanthusd"
 test -x "$temporary/usr/bin/osmanthus-shell"
 test -s "$temporary/lib/systemd/system/osmanthusd.service"
 ! grep -Fqx "PrivateTmp=yes" "$temporary/lib/systemd/system/osmanthusd.service"
+grep -Fqx "ReadWritePaths=/run/osmanthus /var/log/osmanthus /sys/fs/bpf /etc/osmanthus/admin" \
+  "$temporary/lib/systemd/system/osmanthusd.service"
+! grep -Eq '^ReadWritePaths=(/etc/osmanthus([[:space:]]|$)|.*[[:space:]]/etc/osmanthus([[:space:]]|$))' \
+  "$temporary/lib/systemd/system/osmanthusd.service"
 test -s "$temporary/etc/logrotate.d/osmanthus"
 test -s "$temporary/usr/share/doc/osmanthus/ssm.md.gz"
 gzip -cd "$temporary/usr/share/doc/osmanthus/README.md.gz" | grep -Fq "caller cgroup"
