@@ -146,6 +146,8 @@ External collection is deliberately out of scope. Operators may forward the file
 
 For a root-owned installation, the repository includes a conservative example at [`ops/logrotate/onyx`](ops/logrotate/onyx): rotate at 10 MiB, retain seven generations, and compress older records. Review the path, owner, retention, and compliance requirements before installing it as `/etc/logrotate.d/onyx`.
 
+For deployment checks, monitoring, encrypted backup/restore, upgrade, rollback, authenticator loss, and incident handling, use the [operations runbook](docs/operations.md).
+
 ## Exit codes
 
 | Code | Meaning |
