@@ -27,15 +27,31 @@ Onyx does not upload logs or require an AWS, Google, or other cloud account. Goo
 
 macOS and Windows command protection, OpenSSH/FIDO security keys, eBPF enforcement, and a privileged daemon are not part of v0.1.
 
-## Install from source
+## Install
+
+### Homebrew on Linux or macOS
+
+```console
+brew tap ttr1563/onyx https://github.com/ttr1563/onyx.git
+brew install ttr1563/onyx/onyx
+```
+
+The Formula builds Onyx from the checksummed release source. Linux is the supported protection target. The CLI is expected to build on macOS, but macOS command protection is not verified in v0.1.
+
+Upgrade an existing Homebrew installation with:
+
+```console
+brew update
+brew upgrade ttr1563/onyx/onyx
+```
+
+### Build from source
 
 ```console
 git clone https://github.com/ttr1563/onyx.git
 cd onyx
 cargo install --path .
 ```
-
-A Homebrew formula will be published with the first tagged release. Until then, the source install above is the supported installation method.
 
 ## Initialize
 
