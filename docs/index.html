@@ -6,6 +6,9 @@
     <meta name="robots" content="noindex,nofollow">
     <meta name="description" content="Onyx is a lightweight command guard for Linux servers.">
     <link rel="canonical" href="https://ttr1563.github.io/onyx/">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/">
     <link rel="stylesheet" href="./styles.css">
     <title>Onyx — a command guard for Linux servers</title>
   </head>
@@ -13,7 +16,10 @@
     <header class="hero">
       <nav>
         <a class="brand" href="./" aria-label="Onyx home">ONYX</a>
-        <a href="https://github.com/ttr1563/onyx">GitHub</a>
+        <div class="nav-links">
+          <a href="./ja/" lang="ja" hreflang="ja">日本語</a>
+          <a href="https://github.com/ttr1563/onyx">GitHub</a>
+        </div>
       </nav>
       <div class="hero-copy">
         <p class="eyebrow">Linux command safety</p>
@@ -21,6 +27,7 @@
         <p class="lead">Onyx detects risky operations, blocks them before execution, and requires approval from a separate TOTP authenticator.</p>
         <div class="actions">
           <a class="primary" href="#quick-start">Quick start</a>
+          <a class="secondary" href="./guide.html">How Onyx works</a>
           <a class="secondary" href="https://github.com/ttr1563/onyx">View source</a>
         </div>
       </div>
@@ -37,10 +44,11 @@
         <div>
           <p class="eyebrow">Quick start</p>
           <h2>Small surface. Explicit control.</h2>
-          <p>Install the tagged release with Homebrew, enroll any RFC 6238-compatible authenticator, then place Onyx in front of commands you want to guard.</p>
+          <p>On Amazon Linux 2023, add the signed Onyx repository once and install with DNF. Then enroll any RFC 6238-compatible authenticator.</p>
         </div>
-        <pre><code>brew tap ttr1563/onyx https://github.com/ttr1563/onyx.git
-brew install ttr1563/onyx/onyx
+        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
+sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
+sudo dnf install onyx
 
 onyx init --account production-web-01
 onyx run -- systemctl status nginx</code></pre>
@@ -62,6 +70,7 @@ onyx run -- systemctl status nginx</code></pre>
         <h2>Onyx v0.1 is an explicit wrapper, not host-wide enforcement.</h2>
         <p>Commands that bypass <code>onyx run</code> are not protected. Root can disable a user-space guard, and code running as the state owner can read the TOTP seed. The project documents these limits instead of claiming physical-key or complete intrusion protection.</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">Read the security model →</a>
+        <a href="./guide.html">Read the technical guide →</a>
         <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">Operations runbook →</a>
       </section>
     </main>
