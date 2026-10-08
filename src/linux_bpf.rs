@@ -714,7 +714,12 @@ impl ResourceIdentity {
 }
 
 fn resource_identity(path: &Path) -> Result<ResourceIdentity> {
-    let canonical = fs::canonicalize(path)?;
+    let canonical = fs::canonicalize(path).map_err(|error| {
+        OsmanthusError::InvalidState(format!(
+            "protected resource root must exist and be accessible: {}: {error}",
+            path.display()
+        ))
+    })?;
     if canonical != path {
         return Err(OsmanthusError::InvalidState(format!(
             "protected resource must be canonical and must not traverse a symlink: {} resolves to {}",
@@ -722,7 +727,12 @@ fn resource_identity(path: &Path) -> Result<ResourceIdentity> {
             canonical.display()
         )));
     }
-    let metadata = fs::metadata(path)?;
+    let metadata = fs::metadata(path).map_err(|error| {
+        OsmanthusError::InvalidState(format!(
+            "read protected resource root metadata: {}: {error}",
+            path.display()
+        ))
+    })?;
     if !metadata.is_dir() {
         return Err(OsmanthusError::InvalidState(format!(
             "protected resource root must be a directory: {}",
@@ -739,6 +749,10 @@ fn resource_identity(path: &Path) -> Result<ResourceIdentity> {
         inode: metadata.ino(),
         device,
     })
+}
+
+pub fn validate_protected_root_path(path: &Path) -> Result<()> {
+    resource_identity(path).map(|_| ())
 }
 
 fn resource_identities(root: &Path) -> Result<Vec<ResourceIdentity>> {
@@ -1047,5 +1061,16 @@ mod tests {
             "/srv/app data\\archive"
         );
         assert!(decode_mountinfo_path("/srv/bad\\04").is_err());
+    }
+
+    #[test]
+    fn protected_root_preflight_requires_an_existing_canonical_directory() {
+        let temporary = tempfile::tempdir().unwrap();
+        validate_protected_root_path(temporary.path()).unwrap();
+
+        let missing = temporary.path().join("missing");
+        let error = validate_protected_root_path(&missing).unwrap_err();
+        assert!(error.to_string().contains(&missing.display().to_string()));
+        assert!(error.to_string().contains("must exist and be accessible"));
     }
 }

@@ -45,7 +45,7 @@ gate.
 Add one existing canonical directory at a time:
 
 ```bash
-sudo osmanthus policy protect add /srv/application \
+sudo osmanthus policy protect add --path /srv/application \
   --action delete --action rename --action truncate \
   --action change-permissions
 ```

@@ -56,7 +56,7 @@ cargo build --release --locked
 
 sudo osmanthus policy init --account production-policy-admin
 sudo systemctl enable --now osmanthusd
-sudo osmanthus policy protect add /srv/production --action delete --action rename</code></pre>
+sudo osmanthus policy protect add --path /srv/production --action delete --action rename</code></pre>
       </section>
 
       <section class="flow">
@@ -76,7 +76,7 @@ sudo osmanthus policy protect add /srv/production --action delete --action renam
           <h2>root管理で環境固有ルールを追加。</h2>
           <p>system policyを一度初期化し、強制境界が必要なdirectoryと破壊操作だけを指定します。以後の変更にはroot権限と別管理のpolicy管理者TOTPが必要です。</p>
         </div>
-        <pre><code>sudo osmanthus policy protect add /srv/production \
+        <pre><code>sudo osmanthus policy protect add --path /srv/production \
   --action delete \
   --action rename \
   --action truncate \

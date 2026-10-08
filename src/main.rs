@@ -755,6 +755,7 @@ fn policy_command(root: &Path, command: PolicyCommands) -> Result<u8> {
         }),
         PolicyCommands::Protect { command } => match command {
             ProtectCommands::Add { path, actions } => {
+                osmanthus_guard::linux_bpf::validate_protected_root_path(&path)?;
                 mutate_system_policy("protect add", |policy_file| {
                     let actions = actions.iter().copied().map(Into::into).collect();
                     let root = ProtectedRoot::new(&path, actions)?;

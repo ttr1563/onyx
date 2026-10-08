@@ -35,7 +35,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now osmanthusd
 osmanthus daemon status
 
-sudo osmanthus policy protect add /srv/production \
+sudo osmanthus policy protect add --path /srv/production \
   --action delete --action rename --action truncate
 sudo osmanthus policy monitor add 1001 --shell /bin/bash</code></pre><p>Use a disposable directory for the first boundary test and keep a console/recovery path before changing a login shell. Normal filesystem enforcement does not require <code>osmanthus run</code>.</p></section>
       <section><h2>Authenticator rotation</h2><p>While the current TOTP authenticator is available, run <code>sudo osmanthus policy auth rotate</code> to issue a replacement QR/URI. The previous secret becomes invalid immediately. Loss of every enrolled copy requires restoration from a tested root-restricted backup; direct file editing is not a recovery method.</p></section>

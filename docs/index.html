@@ -56,7 +56,7 @@ cargo build --release --locked
 
 sudo osmanthus policy init --account production-policy-admin
 sudo systemctl enable --now osmanthusd
-sudo osmanthus policy protect add /srv/production --action delete --action rename</code></pre>
+sudo osmanthus policy protect add --path /srv/production --action delete --action rename</code></pre>
       </section>
 
       <section class="flow">
@@ -76,7 +76,7 @@ sudo osmanthus policy protect add /srv/production --action delete --action renam
           <h2>Root-owned rules for your environment.</h2>
           <p>Initialize the system policy once. Protect only the directories and destructive operation classes that need a hard boundary. Every later change requires root and the separate policy-administrator TOTP.</p>
         </div>
-        <pre><code>sudo osmanthus policy protect add /srv/production \
+        <pre><code>sudo osmanthus policy protect add --path /srv/production \
   --action delete \
   --action rename \
   --action truncate \

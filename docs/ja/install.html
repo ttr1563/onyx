@@ -35,7 +35,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now osmanthusd
 osmanthus daemon status
 
-sudo osmanthus policy protect add /srv/production \
+sudo osmanthus policy protect add --path /srv/production \
   --action delete --action rename --action truncate
 sudo osmanthus policy monitor add 1001 --shell /bin/bash</code></pre><p>最初の境界testは使い捨てdirectoryで行い、login shell変更前にconsole・復旧経路を確保します。通常のfilesystem保護に<code>osmanthus run</code>は不要です。</p></section>
       <section><h2>認証器rotation</h2><p>現在のTOTP認証器を利用できる間に<code>sudo osmanthus policy auth rotate</code>を実行すると、新しいQR/URIを発行できます。旧secretは直ちに無効になります。登録済み認証器をすべて失った場合は、検証済みのroot専用backupから復元します。fileの直接編集は復旧手順にしません。</p></section>

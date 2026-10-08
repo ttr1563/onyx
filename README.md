@@ -131,7 +131,7 @@ Rotate it while the current authenticator is available with
 Add a real directory and the destructive actions to protect:
 
 ```bash
-sudo osmanthus policy protect add /srv/production \
+sudo osmanthus policy protect add --path /srv/production \
   --action delete \
   --action rename \
   --action truncate \
