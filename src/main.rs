@@ -15,7 +15,7 @@ use onyx_guard::policy::PolicyFile;
 use onyx_guard::state::{self, EventStatus, GuardEvent, StateLock};
 use onyx_guard::system_policy;
 use onyx_guard::{OnyxError, Result};
-use qrcode::QrCode;
+use qrcode::{EcLevel, QrCode, render::unicode::Dense1x2};
 use time::OffsetDateTime;
 use zeroize::Zeroizing;
 
@@ -159,9 +159,9 @@ fn initialize(root: &Path, issuer: String, account: Option<String>, no_qr: bool)
     audit::append(root, &record)?;
 
     println!("Onyx initialized at {}", root.display());
-    print_enrollment(&config, no_qr)?;
     println!("Audit log: {}", root.join(config::AUDIT_FILE).display());
     println!("Run commands with: onyx run -- <command>");
+    print_enrollment(&config, no_qr)?;
     let record = AuditRecord::new("enrollment_displayed")?;
     audit::append(root, &record)?;
     Ok(0)
@@ -169,18 +169,35 @@ fn initialize(root: &Path, issuer: String, account: Option<String>, no_qr: bool)
 
 fn print_enrollment(config: &Config, no_qr: bool) -> Result<()> {
     let uri = config.totp_uri();
+    println!("TOTP URI (shown once): {uri}");
     if !no_qr {
-        let code = QrCode::new(uri.as_bytes())
-            .map_err(|error| OnyxError::InvalidState(format!("failed to render QR: {error}")))?;
-        let rendered = code
-            .render::<char>()
-            .quiet_zone(true)
-            .module_dimensions(2, 1)
-            .build();
+        let rendered = render_enrollment_qr(&uri)?;
         println!("\nScan this QR code with a TOTP authenticator:\n{rendered}");
     }
-    println!("TOTP URI (shown once): {uri}");
     Ok(())
+}
+
+fn render_enrollment_qr(uri: &str) -> Result<String> {
+    const QUIET_ZONE_MODULES: usize = 2;
+
+    let code = QrCode::with_error_correction_level(uri.as_bytes(), EcLevel::L)
+        .map_err(|error| OnyxError::InvalidState(format!("failed to render QR: {error}")))?;
+    let compact = code
+        .render::<Dense1x2>()
+        .quiet_zone(false)
+        .module_dimensions(1, 1)
+        .build();
+    let horizontal_border = " ".repeat(QUIET_ZONE_MODULES);
+    let blank_line = " ".repeat(code.width() + QUIET_ZONE_MODULES * 2);
+    let mut lines = Vec::with_capacity(compact.lines().count() + 2);
+    lines.push(blank_line.clone());
+    lines.extend(
+        compact
+            .lines()
+            .map(|line| format!("{horizontal_border}{line}{horizontal_border}")),
+    );
+    lines.push(blank_line);
+    Ok(lines.join("\n"))
 }
 
 fn check_command(root: &Path, command: Vec<OsString>) -> Result<u8> {

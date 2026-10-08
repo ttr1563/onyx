@@ -130,7 +130,7 @@ Run Onyx as the same operating-system identity that will run protected commands.
 onyx init --account production-web-01
 ```
 
-Onyx prints a terminal QR code and an `otpauth://` URI exactly during initialization. Scan either with a TOTP authenticator. The TOTP seed is not written to the audit log.
+Onyx prints a compact terminal QR code and an `otpauth://` URI exactly during initialization. The QR uses half-block Unicode cells and low error correction so a normal enrollment fits in one camera view; custom long issuer or account labels can still make it larger. Scan either form with a TOTP authenticator. The TOTP seed is not written to the audit log.
 
 Default state paths:
 

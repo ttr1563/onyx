@@ -61,7 +61,7 @@ impl Config {
     pub fn totp_uri(&self) -> String {
         let label = format!("{}:{}", self.issuer, self.account);
         format!(
-            "otpauth://totp/{}?secret={}&issuer={}&algorithm=SHA1&digits=6&period=30",
+            "otpauth://totp/{}?secret={}&issuer={}",
             urlencoding::encode(&label),
             self.totp_secret_base32,
             urlencoding::encode(&self.issuer)
@@ -295,4 +295,21 @@ fn validate_owner_and_mode(path: &Path, metadata: &fs::Metadata) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Config;
+
+    #[test]
+    fn totp_uri_uses_standard_defaults_without_repeating_them() {
+        let config = Config::new("Onyx".to_owned(), "production deploy".to_owned()).unwrap();
+        let uri = config.totp_uri();
+
+        assert!(uri.starts_with("otpauth://totp/Onyx%3Aproduction%20deploy?secret="));
+        assert!(uri.ends_with("&issuer=Onyx"));
+        assert!(!uri.contains("algorithm="));
+        assert!(!uri.contains("digits="));
+        assert!(!uri.contains("period="));
+    }
 }
