@@ -53,6 +53,7 @@ sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
 sudo dnf install onyx
 
 onyx init --account production-web-01
+sudo onyx policy init --account production-policy-admin
 onyx run -- systemctl status nginx</code></pre>
       </section>
 
@@ -70,10 +71,11 @@ onyx run -- systemctl status nginx</code></pre>
       <section class="content-grid">
         <div>
           <p class="eyebrow">カスタムポリシー</p>
-          <h2>環境固有の承認ルールを追加。</h2>
-          <p>実行ファイル名と必須の引数断片を指定できます。追加ルールは組込みポリシーと併用され、変更は監査ログへ記録されます。</p>
+          <h2>root管理で環境固有ルールを追加。</h2>
+          <p>system policyを一度初期化すると、ルールの追加・削除にはroot権限と別管理のpolicy管理者TOTPが必要です。</p>
         </div>
-        <pre><code>onyx policy add \
+        <pre><code>sudo onyx policy init --account production-policy-admin
+sudo onyx policy add \
   --id production-terraform \
   --executable terraform \
   --argument-contains apply \
@@ -85,7 +87,7 @@ onyx run -- systemctl status nginx</code></pre>
       <section class="scope">
         <p class="eyebrow">対象外</p>
         <h2>v0.1で担保しない範囲。</h2>
-        <p><code>onyx run</code>を経由しない操作、rootによる迂回、物理的な本人確認は担保しません。</p>
+        <p>root所有policyは通常ユーザーからのルール変更を防ぎます。<code>onyx run</code>外、rootによる迂回、状態所有者によるevent・permit変更、物理的な本人確認は担保しません。</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">セキュリティモデルを読む →</a>
         <a href="./guide.html">技術ガイドを読む →</a>
         <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbookを読む →</a>

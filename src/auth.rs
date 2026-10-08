@@ -11,9 +11,25 @@ pub fn approve_with_code(
     code: &str,
     now: i64,
 ) -> Result<GuardEvent> {
+    with_verified_code(root, config, code, now, || {
+        let mut event = state::load_event(root, event_id)?;
+        ensure_pending(&event, now)?;
+        event.status = EventStatus::Approved;
+        event.approved_at_unix = Some(now);
+        event.approved_until_unix = Some(now + config.approval_ttl_seconds);
+        state::save_event(root, &event)?;
+        Ok(event)
+    })
+}
+
+pub fn with_verified_code<T>(
+    root: &Path,
+    config: &Config,
+    code: &str,
+    now: i64,
+    action: impl FnOnce() -> Result<T>,
+) -> Result<T> {
     let _lock = StateLock::acquire(root)?;
-    let mut event = state::load_event(root, event_id)?;
-    ensure_pending(&event, now)?;
     let mut auth_state = config::load_auth_state(root)?;
     if let Some(until) = auth_state.locked_until_unix {
         if now < until {
@@ -42,11 +58,7 @@ pub fn approve_with_code(
     auth_state.locked_until_unix = None;
     auth_state.last_accepted_counter = Some(counter);
     config::save_auth_state(root, &auth_state)?;
-    event.status = EventStatus::Approved;
-    event.approved_at_unix = Some(now);
-    event.approved_until_unix = Some(now + config.approval_ttl_seconds);
-    state::save_event(root, &event)?;
-    Ok(event)
+    action()
 }
 
 pub fn ensure_pending(event: &GuardEvent, now: i64) -> Result<()> {

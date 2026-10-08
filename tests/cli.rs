@@ -8,6 +8,7 @@ use std::sync::{Arc, Barrier};
 use assert_cmd::prelude::*;
 use onyx_guard::auth;
 use onyx_guard::config::{self, Config};
+use onyx_guard::policy::{CustomRule, PolicyFile, RiskLevel};
 use onyx_guard::state::{self, EventStatus, GuardEvent};
 use predicates::prelude::*;
 use tempfile::TempDir;
@@ -326,30 +327,29 @@ fn concurrent_audit_records_remain_valid_json_lines() {
 }
 
 #[test]
-fn custom_policy_can_be_added_and_enforced() {
+fn legacy_user_policy_remains_enforced_until_system_policy_is_initialized() {
     let temp = TempDir::new().unwrap();
     let root = temp.path().join("state");
     initialize(&root);
 
+    let mut policy = PolicyFile::default();
+    policy
+        .add(CustomRule {
+            id: "production-terraform".to_owned(),
+            executable: "terraform".to_owned(),
+            argument_contains: vec!["apply".to_owned(), "production".to_owned()],
+            risk: RiskLevel::Critical,
+            reason: "production infrastructure change".to_owned(),
+        })
+        .unwrap();
+    policy.save(&root).unwrap();
+
     onyx(&root)
-        .args([
-            "policy",
-            "add",
-            "--id",
-            "production-terraform",
-            "--executable",
-            "terraform",
-            "--argument-contains",
-            "apply",
-            "--argument-contains",
-            "production",
-            "--risk",
-            "critical",
-            "--reason",
-            "production infrastructure change",
-        ])
+        .args(["policy", "list"])
         .assert()
-        .success();
+        .success()
+        .stdout(predicate::str::contains("Policy source: legacy user"))
+        .stdout(predicate::str::contains("production-terraform"));
     onyx(&root)
         .args(["check", "--", "terraform", "apply", "production.tfplan"])
         .assert()
@@ -359,20 +359,6 @@ fn custom_policy_can_be_added_and_enforced() {
         .args(["check", "--", "terraform", "plan", "production.tfplan"])
         .assert()
         .success();
-    onyx(&root)
-        .args([
-            "policy",
-            "add",
-            "--id",
-            "production-terraform",
-            "--executable",
-            "terraform",
-            "--reason",
-            "duplicate",
-        ])
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("already exists"));
 }
 
 #[test]

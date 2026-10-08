@@ -53,6 +53,7 @@ sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
 sudo dnf install onyx
 
 onyx init --account production-web-01
+sudo onyx policy init --account production-policy-admin
 onyx run -- systemctl status nginx</code></pre>
       </section>
 
@@ -70,10 +71,11 @@ onyx run -- systemctl status nginx</code></pre>
       <section class="content-grid">
         <div>
           <p class="eyebrow">Custom policy</p>
-          <h2>Add approval rules for your environment.</h2>
-          <p>Match an executable and required argument fragments. Custom rules are added to the built-in policy and recorded in the audit log.</p>
+          <h2>Root-owned rules for your environment.</h2>
+          <p>Initialize the system policy once. Adding or removing a rule then requires root and the separate policy-administrator TOTP.</p>
         </div>
-        <pre><code>onyx policy add \
+        <pre><code>sudo onyx policy init --account production-policy-admin
+sudo onyx policy add \
   --id production-terraform \
   --executable terraform \
   --argument-contains apply \
@@ -85,7 +87,7 @@ onyx run -- systemctl status nginx</code></pre>
       <section class="scope">
         <p class="eyebrow">Scope</p>
         <h2>What v0.1 does not cover.</h2>
-        <p>Onyx does not cover commands that bypass <code>onyx run</code>, root-level bypass, or physical-presence verification.</p>
+        <p>The root-owned policy prevents normal-user rule changes. Onyx does not cover commands that bypass <code>onyx run</code>, root-level bypass, state-owner changes to events or permits, or physical-presence verification.</p>
         <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">Read the security model →</a>
         <a href="./guide.html">Read the technical guide →</a>
         <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">Operations runbook →</a>

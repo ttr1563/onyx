@@ -26,7 +26,7 @@
         <p>Onyx v0.1は<strong>明示的なコマンドラッパー</strong>です。自動処理または運用者が<code>onyx run -- &lt;command&gt;</code>を実行すると、Onyxは子プロセスを作成する前に引数列を評価します。このラッパーを経由しないコマンドは横取りも監視もしません。</p>
         <div class="flow-diagram" aria-label="Onyxのコマンド実行フロー">
           <div class="node"><strong>1. 受付</strong><span><code>onyx run -- ...</code></span></div>
-          <div class="node"><strong>2. 判定</strong><span>組込みルールと追加ルール</span></div>
+          <div class="node"><strong>2. 検証</strong><span>root所有system policyとdigest</span></div>
           <div class="node"><strong>3. 決定</strong><span>即時許可または遮断イベント作成</span></div>
           <div class="node"><strong>4. 実行</strong><span>permitを消費してからプロセス作成</span></div>
           <div class="node"><strong>5. 監査</strong><span>秘匿値を除いたJSONL追記</span></div>
@@ -55,9 +55,11 @@
         <p>TOTP承認には登録済みのコードが必要です。物理的な本人確認と、state所有者またはrootからのseed保護は担保しません。hardware key承認はv0.1の対象外です。</p>
       </section>
       <section>
-        <h2>承認ルールを追加する</h2>
-        <p>組込みポリシーは、再帰的削除、filesystem初期化、raw device書込み、shutdown、権限wrapper、shell文字列、破壊的な<code>find</code>、root全体の権限変更、秘密情報らしき転送、decodeと<code>eval</code>の組合せを対象にします。環境固有のルールはCLIから追加できます。</p>
-        <pre><code>onyx policy add \
+        <h2>root管理の承認ルールを追加する</h2>
+        <p>組込みポリシーは、再帰的削除、filesystem初期化、raw device書込み、shutdown、権限wrapper、shell文字列、破壊的な<code>find</code>、root全体の権限変更、秘密情報らしき転送、decodeと<code>eval</code>の組合せを対象にします。system policyを初期化してから、環境固有ルールを追加します。</p>
+        <pre><code>sudo onyx policy init --account production-policy-admin
+
+sudo onyx policy add \
   --id production-terraform \
   --executable terraform \
   --argument-contains apply \
@@ -66,8 +68,10 @@
   --reason "production infrastructure change"
 
 onyx policy list
-onyx check -- terraform apply production.tfplan</code></pre>
-        <p>指定した引数断片はすべて一致した場合に発動します。追加ルールは承認必須の範囲を広げ、組込みルールを無効化しません。絶対に承認できない恒久deny modeはv0.1にありません。</p>
+onyx check -- terraform apply production.tfplan
+
+sudo onyx policy remove --id production-terraform</code></pre>
+        <p>policy変更にはroot権限と別管理のpolicy管理者TOTPが必要です。指定した引数断片はすべて一致した場合に発動します。追加ルールは承認必須の範囲を広げ、組込みルールを無効化しません。絶対に承認できない恒久deny modeはv0.1にありません。</p>
         <pre><code>{
   "schema_version": 1,
   "rules": [{
@@ -78,6 +82,7 @@ onyx check -- terraform apply production.tfplan</code></pre>
     "reason": "production infrastructure change"
   }]
 }</code></pre>
+        <p>Onyxは意味解析型のmalware検出器ではありません。shell文字列、interpreter、alias、難読化payload、同等のsystem callは意図を隠せます。そのため安全な操作でも保守的に承認を求める場合があり、wrapper外の操作は見えません。</p>
       </section>
       <section>
         <h2>状態とローカル証跡</h2>
@@ -89,12 +94,16 @@ onyx check -- terraform apply production.tfplan</code></pre>
 ├── config.json
 ├── policy.json
 └── events/&lt;event-id&gt;.json</code></pre>
-        <p><code>policy.json</code>は暗号化せず、人が読めるJSONで保存します。内容はrule ID、実行ファイル名、引数断片、risk、理由です。ルールは秘密情報ではないため、credentialを記載しないでください。<code>onyx policy add</code>はfileを原子的に更新し、<code>policy_rule_added</code>を監査ログへ記録します。</p>
+        <pre><code>/etc/onyx/
+├── policy.json        root:root 0444
+├── policy.sha256      root:root 0444
+└── admin/             root専用policy TOTP・監査状態</code></pre>
+        <p>system policyは暗号化せず、人が読める設定として保存するため、credentialを記載しないでください。check・runのたびに、対になるfile、種別、所有者、mode、schema、digestを検証し、不整合では処理を停止します。digestは不整合を検出し、一般ユーザーによる置換はOSの所有権で防ぎます。</p>
         <p>監査記録にはUTC時刻、action、event ID、command digest、redact済み概要、該当rule ID、必要な終了状態を含めます。stdout、stderr、環境変数、TOTP seed、入力コードは記録しません。</p>
       </section>
       <section>
         <h2>導入・運用フロー</h2>
-        <ol><li>署名済みRPMまたはDebian package、あるいは文書化されたsource経路から導入し、実際に利用する制約付きOS identityでOnyxを初期化します。</li><li>時刻同期、権限、安全な実行、非実行の遮断checkを確認します。</li><li>保護したいautomationの入口を<code>onyx run -- ...</code>へ変更します。</li><li>遮断の反復、承認失敗、disk容量、時刻同期、wrapperを迂回する経路を監視します。</li><li>別管理の復旧経路を残し、incident作業前に必要な状態と証跡を保全します。</li></ol>
+        <ol><li>署名済みRPMまたはDebian package、あるいは文書化されたsource経路から導入し、制約付きOS identityで実行状態を初期化します。</li><li><code>sudo onyx policy init</code>を実行し、別管理のpolicy管理者認証器を登録します。</li><li>時刻同期、権限、policy一覧、安全な実行、非実行の遮断checkを確認します。</li><li>automationの入口を<code>onyx run -- ...</code>へ変更します。</li><li>失敗を監視し、incident作業前に両方の状態treeを保全します。</li></ol>
         <p>本番利用前に<a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbook</a>、<a href="https://github.com/ttr1563/onyx/blob/main/docs/architecture.md">architecture</a>、<a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">security policy</a>を確認してください。</p>
       </section>
     </main>
