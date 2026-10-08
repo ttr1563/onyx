@@ -26,7 +26,7 @@
         <p>Onyx v0.1は<strong>明示的なコマンドラッパー</strong>です。自動処理または運用者が<code>onyx run -- &lt;command&gt;</code>を実行すると、Onyxは子プロセスを作成する前に引数列を評価します。このラッパーを経由しないコマンドは横取りも監視もしません。</p>
         <div class="flow-diagram" aria-label="Onyxのコマンド実行フロー">
           <div class="node"><strong>1. 受付</strong><span><code>onyx run -- ...</code></span></div>
-          <div class="node"><strong>2. 判定</strong><span>組込みルールと追加ルール</span></div>
+          <div class="node"><strong>2. 検証</strong><span>root所有system policyとdigest</span></div>
           <div class="node"><strong>3. 決定</strong><span>即時許可または遮断イベント作成</span></div>
           <div class="node"><strong>4. 実行</strong><span>permitを消費してからプロセス作成</span></div>
           <div class="node"><strong>5. 監査</strong><span>秘匿値を除いたJSONL追記</span></div>
@@ -56,7 +56,7 @@
       </section>
       <section>
         <h2>ポリシーと解釈の難しいコマンド</h2>
-        <p>組込みポリシーは、再帰的削除、filesystem初期化、raw device書込み、shutdown、権限wrapper、shell文字列、破壊的な<code>find</code>、root全体の権限変更、秘密情報らしき転送、decodeと<code>eval</code>の組合せなど、少数の監査しやすいパターンを対象にします。CLIから追加するsite ruleは遮断範囲を広げる方向にだけ働きます。</p>
+        <p>組込みポリシーは、再帰的削除、filesystem初期化、raw device書込み、shutdown、権限wrapper、shell文字列、破壊的な<code>find</code>、root全体の権限変更、秘密情報らしき転送、decodeと<code>eval</code>の組合せなど、少数の監査しやすいパターンを対象にします。<code>sudo onyx policy init</code>でsystem policyを初期化すると、構造化された<code>add</code>と<code>remove</code>にはroot権限とpolicy管理者用TOTPの両方が必要です。</p>
         <p>Onyxは意味解析型のmalware検出器ではありません。shell文字列、interpreter、alias、難読化payload、同等のsystem callは意図を隠せます。そのため安全な操作でも保守的に承認を求める場合があり、wrapper外の操作は見えません。</p>
       </section>
       <section>
@@ -69,11 +69,16 @@
 ├── config.json
 ├── policy.json
 └── events/&lt;event-id&gt;.json</code></pre>
+        <pre><code>/etc/onyx/
+├── policy.json        root:root 0444
+├── policy.sha256      root:root 0444
+└── admin/             root専用policy TOTP・監査状態</code></pre>
+        <p>system policyはcheck・runのたびに検証します。対になるfileの欠損、種別・所有者・modeの不正、schema不正、digest不一致では処理を停止します。digestは不整合を検出し、一般ユーザーによる置換はOSの所有権で防ぎます。</p>
         <p>監査記録にはUTC時刻、action、event ID、command digest、redact済み概要、該当rule ID、必要な終了状態を含めます。stdout、stderr、環境変数、TOTP seed、入力コードは記録しません。ただしrootはローカル証跡を変更できます。改ざん耐性が必要なら既存collectorから外部保存してください。</p>
       </section>
       <section>
         <h2>導入・運用フロー</h2>
-        <ol><li>署名済みRPMを導入し、実際に利用する制約付きOS identityでOnyxを初期化します。</li><li>時刻同期、権限、安全な実行、非実行の遮断checkを確認します。</li><li>保護したいautomationの入口を<code>onyx run -- ...</code>へ変更します。</li><li>遮断の反復、承認失敗、disk容量、時刻同期、wrapperを迂回する経路を監視します。</li><li>別管理の復旧経路を残し、incident作業前に必要な状態と証跡を保全します。</li></ol>
+        <ol><li>Onyxを導入し、制約付きOS identityで実行状態を初期化します。</li><li><code>sudo onyx policy init</code>を実行し、別管理のpolicy管理者認証器を登録します。</li><li>時刻同期、権限、policy一覧、安全な実行、非実行の遮断checkを確認します。</li><li>automationの入口を<code>onyx run -- ...</code>へ変更します。</li><li>失敗を監視し、incident作業前に両方の状態treeを保全します。</li></ol>
         <p>本番利用前に<a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbook</a>、<a href="https://github.com/ttr1563/onyx/blob/main/docs/architecture.md">architecture</a>、<a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">security policy</a>を確認してください。</p>
       </section>
     </main>
