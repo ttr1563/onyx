@@ -68,8 +68,11 @@ for image in "${images[@]}"; do
       test "$status" -eq 77
       install -d -m0700 /var/lib/onyx
       touch /var/lib/onyx/retain-after-package-removal
+      install -d -m0755 /etc/onyx
+      touch /etc/onyx/retain-after-package-removal
       apt-get "${apt_options[@]}" purge -y onyx
       test -e /var/lib/onyx/retain-after-package-removal
+      test -e /etc/onyx/retain-after-package-removal
       test ! -e /usr/bin/onyx
     '
 done

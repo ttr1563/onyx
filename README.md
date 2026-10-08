@@ -46,7 +46,7 @@ sudo dnf install onyx
 sudo dnf upgrade onyx
 ```
 
-The initial repository publishes an `x86_64` package built and tested on Amazon Linux 2023. Other RPM distributions and `aarch64` are not yet verified. Package removal leaves `/var/lib/onyx` state and audit evidence intact; remove retained data only after reviewing incident and retention requirements.
+The initial repository publishes an `x86_64` package built and tested on Amazon Linux 2023. Other RPM distributions and `aarch64` are not yet verified. Package removal leaves `/var/lib/onyx` and `/etc/onyx` state and audit evidence intact; remove retained data only after reviewing incident and retention requirements.
 
 ### Debian or Ubuntu with APT
 
@@ -66,7 +66,7 @@ sudo apt-get update
 sudo apt-get install onyx
 ```
 
-The initial APT repository supports `amd64` on Debian 12 and Ubuntu 22.04 or later. `Signed-By` limits this repository to the dedicated Onyx key. Upgrade with `sudo apt-get update && sudo apt-get install --only-upgrade onyx`. Removing the package intentionally preserves `/var/lib/onyx` state and audit evidence.
+The initial APT repository supports `amd64` on Debian 12 and Ubuntu 22.04 or later. `Signed-By` limits this repository to the dedicated Onyx key. Upgrade with `sudo apt-get update && sudo apt-get install --only-upgrade onyx`. Removing the package intentionally preserves `/var/lib/onyx` and `/etc/onyx` state and audit evidence.
 
 ### Homebrew on Linux or macOS
 
@@ -284,7 +284,7 @@ sudo dnf remove onyx
 sudo apt-get remove onyx
 ```
 
-After confirming that no audit retention requirement applies, an administrator may separately remove the known Onyx state directory. Package removal intentionally does not delete security logs or enrollment state.
+After confirming that no audit retention requirement applies, an administrator may separately remove the known user state directory and `/etc/onyx`. Package removal intentionally does not delete security logs, policy, or enrollment state.
 
 ## Security model
 

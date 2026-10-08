@@ -10,12 +10,14 @@ All notable changes to Onyx are documented in this file. Versions follow Semanti
 - immutable release-tag installation with Cargo;
 - English and Japanese installation guides covering DNF, APT, Homebrew, source, and Windows x64 through WSL 2;
 - APT signing, verification, compatibility, rollback, and key-lifecycle runbook.
+- root-owned system policy with a separate administrator TOTP for authenticated rule addition and removal;
+- fail-closed policy ownership, mode, symlink, schema, size, and SHA-256 consistency checks.
 
 ### Distribution boundary
 
 - WSL support covers only Linux commands inside WSL that pass through `onyx run`;
 - PowerShell, Command Prompt, native Windows processes, and native macOS command protection remain unsupported;
-- uninstalling a Debian package does not delete Onyx state or audit evidence.
+- uninstalling a Debian package does not delete user execution state, system policy, administrator authentication state, or audit evidence.
 
 ## [0.1.1] - 2026-10-08
 

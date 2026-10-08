@@ -38,9 +38,9 @@ scripts/build-deb.sh 0.1.2 docs/apt/pool/main/o/onyx
 ```
 
 The package contains the Onyx executable, MIT license, README, operations
-runbook, and root logrotate example. `/var/lib/onyx` is deliberately not owned
-or removed by the package, including during purge, because it can contain
-enrollment state and audit evidence.
+runbook, and root logrotate example. `/var/lib/onyx` and `/etc/onyx` are
+deliberately not owned or removed by the package, including during purge,
+because they can contain enrollment state, policy, and audit evidence.
 
 ## Sign and generate metadata
 
@@ -92,7 +92,8 @@ scripts/test-deb.sh docs/apt
 The script does not pull images or start Docker implicitly. Each container is
 network-isolated after image preparation and limited to one CPU, 512 MiB of
 memory, and 256 PIDs. It checks signed repository refresh, installation,
-allowed and blocked CLI paths, purge, and retention of `/var/lib/onyx` evidence.
+allowed and blocked CLI paths, purge, and retention of `/var/lib/onyx` and
+`/etc/onyx` evidence.
 
 ## Rollback and key lifecycle
 

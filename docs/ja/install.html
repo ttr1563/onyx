@@ -78,7 +78,7 @@ brew install ttr1563/onyx/onyx</code></pre>
         <pre><code>onyx --version
 onyx check -- rm -rf /example
 # 想定結果: 遮断され、終了コード77</code></pre>
-        <p>導入経路に応じて<code>sudo dnf remove onyx</code>、<code>sudo apt-get remove onyx</code>、または<code>cargo uninstall onyx-guard</code>を使います。package削除後も<code>/var/lib/onyx</code>の登録状態と監査証跡は意図的に残します。保持・incident要件を確認してから、必要な場合だけ別操作で削除してください。</p>
+        <p>導入経路に応じて<code>sudo dnf remove onyx</code>、<code>sudo apt-get remove onyx</code>、または<code>cargo uninstall onyx-guard</code>を使います。package削除後も<code>/var/lib/onyx</code>の実行状態と、<code>/etc/onyx</code>のpolicy・管理認証状態・監査証跡は意図的に残します。保持・incident要件を確認してから、必要な場合だけ別操作で削除してください。</p>
       </section>
     </main>
     <footer><p>OnyxはMIT Licenseのオープンソースです。</p><a href="./">Onyxへ戻る</a></footer>

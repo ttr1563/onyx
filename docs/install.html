@@ -78,7 +78,7 @@ brew install ttr1563/onyx/onyx</code></pre>
         <pre><code>onyx --version
 onyx check -- rm -rf /example
 # Expected: blocked result and exit code 77</code></pre>
-        <p>Use <code>sudo dnf remove onyx</code>, <code>sudo apt-get remove onyx</code>, or <code>cargo uninstall onyx-guard</code> for the matching install path. Package removal deliberately leaves <code>/var/lib/onyx</code> enrollment state and audit evidence. Review retention and incident requirements before deleting that directory separately.</p>
+        <p>Use <code>sudo dnf remove onyx</code>, <code>sudo apt-get remove onyx</code>, or <code>cargo uninstall onyx-guard</code> for the matching install path. Package removal deliberately leaves <code>/var/lib/onyx</code> execution state and <code>/etc/onyx</code> policy, administrator authentication state, and audit evidence. Review retention and incident requirements before deleting either path separately.</p>
       </section>
     </main>
     <footer><p>Onyx is open source under the MIT License.</p><a href="./">Back to Onyx</a></footer>
