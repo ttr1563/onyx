@@ -2,6 +2,19 @@
 
 All notable changes to Onyx are documented in this file. Versions follow Semantic Versioning after the initial `0.1.0` release.
 
+## [0.1.3] - 2026-10-08
+
+### Changed
+
+- compact terminal enrollment QR output from 114 columns by 57 rows to 41 columns by 21 rows for a representative production label;
+- render QR modules with Unicode half blocks and place the QR last so the complete code remains visible in a 24-line terminal;
+- omit optional `algorithm`, `digits`, and `period` provisioning parameters when they equal the RFC 6238 and authenticator defaults.
+
+### Compatibility
+
+- TOTP remains SHA-1, six digits, and a 30-second period;
+- state schema, system policy, approval behavior, audit records, and package installation paths are unchanged.
+
 ## [0.1.2] - 2026-10-08
 
 ### Added
@@ -53,6 +66,7 @@ All notable changes to Onyx are documented in this file. Versions follow Semanti
 - TOTP state is readable by its owning operating-system identity and is not a boundary against that identity or root;
 - local-only audit records are not tamper-proof against privileged access.
 
+[0.1.3]: https://github.com/ttr1563/onyx/releases/tag/v0.1.3
 [0.1.2]: https://github.com/ttr1563/onyx/releases/tag/v0.1.2
 [0.1.1]: https://github.com/ttr1563/onyx/releases/tag/v0.1.1
 [0.1.0]: https://github.com/ttr1563/onyx/releases/tag/v0.1.0

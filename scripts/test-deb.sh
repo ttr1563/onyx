@@ -3,7 +3,8 @@ set -euo pipefail
 
 repository_root="$(git rev-parse --show-toplevel)"
 cd "$repository_root"
-repository_path="${1:-docs/apt}"
+version="${1:?usage: scripts/test-deb.sh VERSION [REPOSITORY_PATH]}"
+repository_path="${2:-docs/apt}"
 repository_path="$(realpath -m "$repository_path")"
 case "$repository_path" in
   "$repository_root/docs/apt" | "$repository_root/dist"/*) ;;
@@ -38,6 +39,7 @@ for image in "${images[@]}"; do
     --memory=512m \
     --pids-limit=256 \
     --mount "type=bind,src=$repository_path,dst=/repo,readonly" \
+    --env "ONYX_VERSION=$version" \
     "$image" \
     bash -euxc '
       install -D -m0644 /repo/onyx.asc /etc/apt/keyrings/onyx.asc
@@ -56,8 +58,8 @@ for image in "${images[@]}"; do
       )
       apt-get "${apt_options[@]}" update
       apt-get "${apt_options[@]}" install -y onyx
-      test "$(dpkg-query -W -f=\${Version} onyx)" = "0.1.2-1"
-      onyx --version | grep -Fx "onyx 0.1.2"
+      test "$(dpkg-query -W -f=\${Version} onyx)" = "${ONYX_VERSION}-1"
+      onyx --version | grep -Fx "onyx ${ONYX_VERSION}"
       state_dir=/tmp/onyx-smoke
       onyx --state-dir "$state_dir" init --no-qr --account package-smoke >/dev/null
       onyx --state-dir "$state_dir" run -- /bin/true

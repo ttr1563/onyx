@@ -34,7 +34,7 @@ Build on an `x86_64` host with Rust 1.91 or later and GNU `ar`, `tar`, and
 `gzip`:
 
 ```console
-scripts/build-deb.sh 0.1.2 docs/apt/pool/main/o/onyx
+scripts/build-deb.sh 0.1.3 docs/apt/pool/main/o/onyx
 ```
 
 The package contains the Onyx executable, MIT license, README, operations

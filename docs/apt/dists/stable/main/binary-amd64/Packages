@@ -14,3 +14,20 @@ Filename: pool/main/o/onyx/onyx_0.1.2-1_amd64.deb
 Size: 661232
 MD5sum: 86621fadec14f1a52bea9eec90ac3edc
 SHA256: 2a0ec0a0b94bb71885f9a614c863d07c070eda108e6490642b5c5312d3782bb8
+
+Package: onyx
+Version: 0.1.3-1
+Architecture: amd64
+Maintainer: Onyx maintainers <ttr1563@users.noreply.github.com>
+Installed-Size: 1432
+Depends: libc6 (>= 2.34), libgcc-s1
+Section: admin
+Priority: optional
+Homepage: https://ttr1563.github.io/onyx/
+Description: lightweight command guard for Linux servers
+ Onyx evaluates commands before execution, blocks selected high-risk patterns,
+ requires a one-time TOTP approval, and writes redacted local JSONL audit logs.
+Filename: pool/main/o/onyx/onyx_0.1.3-1_amd64.deb
+Size: 664454
+MD5sum: 0f12f7f0ff36b33e77e3654217e27927
+SHA256: 14b8168436feb6a4e6f0f0435fdd33976a8bc3f24ceb294787a6e3e736b8dd2f

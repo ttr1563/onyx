@@ -91,7 +91,7 @@ Use an immutable release tag instead of the mutable default branch:
 ```console
 cargo install \
   --git https://github.com/ttr1563/onyx.git \
-  --tag v0.1.2 \
+  --tag v0.1.3 \
   --locked
 ```
 
@@ -100,7 +100,7 @@ This requires Rust 1.91 or later and the platform build toolchain.
 ### Clone for development
 
 ```console
-git clone --branch v0.1.2 --depth 1 https://github.com/ttr1563/onyx.git
+git clone --branch v0.1.3 --depth 1 https://github.com/ttr1563/onyx.git
 cd onyx
 cargo install --path . --locked
 ```
@@ -130,7 +130,7 @@ Run Onyx as the same operating-system identity that will run protected commands.
 onyx init --account production-web-01
 ```
 
-Onyx prints a terminal QR code and an `otpauth://` URI exactly during initialization. Scan either with a TOTP authenticator. The TOTP seed is not written to the audit log.
+Onyx prints a compact terminal QR code and an `otpauth://` URI exactly during initialization. The QR uses half-block Unicode cells and low error correction so a normal enrollment fits in one camera view; custom long issuer or account labels can still make it larger. Scan either form with a TOTP authenticator. The TOTP seed is not written to the audit log.
 
 Default state paths:
 
