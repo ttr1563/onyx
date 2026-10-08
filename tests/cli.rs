@@ -56,6 +56,37 @@ fn init_creates_private_state_and_status() {
 }
 
 #[test]
+fn init_prints_a_compact_enrollment_qr() {
+    let temp = TempDir::new().unwrap();
+    let root = temp.path().join("state");
+    let output = onyx(&root)
+        .args([
+            "init",
+            "--issuer",
+            "Onyx",
+            "--account",
+            "ttr1563-production-deploy",
+        ])
+        .output()
+        .unwrap();
+
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let qr = stdout
+        .split("Scan this QR code with a TOTP authenticator:\n")
+        .nth(1)
+        .unwrap()
+        .trim_end();
+    let lines: Vec<&str> = qr.lines().collect();
+    assert!(lines.len() <= 23, "QR is {} rows high", lines.len());
+    assert!(
+        lines.iter().all(|line| line.chars().count() <= 41),
+        "QR exceeds 41 terminal columns"
+    );
+    assert!(qr.contains(['▀', '▄', '█']));
+}
+
+#[test]
 fn safe_command_runs_and_preserves_exit_status() {
     let temp = TempDir::new().unwrap();
     let root = temp.path().join("state");
