@@ -123,8 +123,22 @@ sudo osmanthus maintenance revoke LEASE_ID
 ```
 
 For a long migration that needs every configured operation below one path, use
-a scoped pause. It creates one ordinary in-memory lease and does not stop the
-daemon or detach BPF:
+a scoped pause. The lease is bound to the cgroup that connects to the daemon;
+another login cgroup remains blocked. Because some SSM and service entry points
+can share one cgroup, create a dedicated transient systemd service first:
+
+```bash
+sudo systemd-run --quiet --pty --wait --collect --same-dir \
+  --unit=osmanthus-maintenance-$(date +%s) /bin/bash
+# Run these commands inside that root shell.
+osmanthus maintenance pause --path /srv/application/database --for 8h
+osmanthus maintenance list
+# perform the maintenance
+osmanthus maintenance revoke LEASE_ID
+exit
+```
+
+For an already isolated login cgroup, the direct form is also available:
 
 ```bash
 sudo osmanthus maintenance pause --path /srv/application/database --for 8h
@@ -134,6 +148,8 @@ A restart clears all leases. A lease does not stop audit collection and does not
 authorize other actions or parent/sibling paths. Osmanthus rejects a new lease when
 its path is equal to, above, or below an active lease and their operation sets
 overlap; revoke the earlier lease or use a non-overlapping operation class.
+Every process already in the bound cgroup receives the lease, so do not treat a
+shared service cgroup as an individual operator session.
 
 An already-existing writable shared memory mapping can continue changing its
 file after `write` protection is activated. Stop or restart writers before

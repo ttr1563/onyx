@@ -66,7 +66,7 @@ sudo osmanthus policy protect add /srv/production --action delete --action renam
           <li><strong>観測</strong><span>登録UIDのexecと任意のPTY入出力を記録します。</span></li>
           <li><strong>照合</strong><span>カーネルで対象階層と操作種別を照合します。</span></li>
           <li><strong>拒否</strong><span>保護操作を対象変更前に失敗させます。</span></li>
-          <li><strong>保守</strong><span>TOTP付きの階層・操作限定leaseが自動失効します。</span></li>
+          <li><strong>保守</strong><span>TOTP付きの階層・操作・cgroup限定leaseが自動失効します。</span></li>
         </ol>
       </section>
 
@@ -92,7 +92,7 @@ sudo osmanthus policy maintenance set \
 
       <section class="content-grid"><div><p class="eyebrow">データ境界</p><h2>まず完全性を守り、アクセス制御は分離する。</h2><p>opt-inのwrite保護でreleaseやcredential directoryを不変にできます。DB読取り、認証情報、外向き通信先はidentityを考慮したread・network policyが必要なため、コマンド名判定とは分けた次段階として設計します。</p></div><pre><code>sudo osmanthus maintenance pause \
   --path /srv/production/database \
-  --for 8h</code></pre></section>
+  --for 8h</code></pre><p>leaseは認証した接続元のkernel cgroupへ固定され、別login cgroupは遮断を維持します。</p></section>
 
       <section class="scope">
         <p class="eyebrow">対象外</p>

@@ -66,7 +66,7 @@ sudo osmanthus policy protect add /srv/production --action delete --action renam
           <li><strong>Observe</strong><span>Enrolled UIDs produce exec and optional PTY transcript events.</span></li>
           <li><strong>Match</strong><span>The kernel matches target ancestry and operation class.</span></li>
           <li><strong>Deny</strong><span>A protected operation fails before changing its target.</span></li>
-          <li><strong>Maintain</strong><span>A TOTP-authenticated path/action lease expires automatically.</span></li>
+          <li><strong>Maintain</strong><span>A TOTP-authenticated path/action/cgroup lease expires automatically.</span></li>
         </ol>
       </section>
 
@@ -92,7 +92,7 @@ sudo osmanthus policy maintenance set \
 
       <section class="content-grid"><div><p class="eyebrow">Data boundary</p><h2>Protect integrity first. Treat access separately.</h2><p>Opt-in write protection can make release or credential directories immutable. Database reads, credentials, and outbound destinations require identity-aware read and network policies; they are a separate planned layer rather than command-name matching.</p></div><pre><code>sudo osmanthus maintenance pause \
   --path /srv/production/database \
-  --for 8h</code></pre></section>
+  --for 8h</code></pre><p>The lease is bound to the authenticated caller's kernel cgroup; another login cgroup remains blocked.</p></section>
 
       <section class="scope">
         <p class="eyebrow">Scope</p>

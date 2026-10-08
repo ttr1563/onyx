@@ -235,12 +235,28 @@ fn main() -> osmanthus_guard::Result<()> {
     }
 
     let now = OffsetDateTime::now_utc().unix_timestamp();
+    let cgroup_id = osmanthus_guard::linux_daemon::current_cgroup_id()?;
+    let foreign_lease = MaintenanceLease::issue(
+        &protected,
+        [ProtectedAction::Delete].into_iter().collect(),
+        now,
+        60,
+        0,
+        cgroup_id.saturating_add(1),
+    )?;
+    session.grant_maintenance(&foreign_lease, now)?;
+    expect_permission_denied(
+        fs::remove_file(&blocked_delete),
+        "delete from a cgroup outside the maintenance lease",
+    )?;
+    session.revoke_maintenance(&foreign_lease)?;
     let lease = MaintenanceLease::issue(
         &protected,
         [ProtectedAction::Delete].into_iter().collect(),
         now,
         60,
         0,
+        cgroup_id,
     )?;
     session.grant_maintenance(&lease, now)?;
     fs::remove_file(&blocked_delete)?;

@@ -3,7 +3,7 @@ use std::io::{BufReader, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
@@ -11,7 +11,7 @@ use libbpf_rs::{MapHandle, RingBufferBuilder};
 use time::OffsetDateTime;
 
 use crate::daemon::{
-    DaemonAuditRecord, DaemonAuditSink, DaemonCore, JsonlDaemonAudit,
+    DaemonAuditRecord, DaemonAuditSink, DaemonCore, JsonlDaemonAudit, PeerIdentity,
     SystemAdministratorAuthenticator,
 };
 use crate::enforcement::EnforcementPolicy;
@@ -113,6 +113,7 @@ fn kernel_audit_record(event: &KernelEvent) -> DaemonAuditRecord {
             timestamp_unix: OffsetDateTime::now_utc().unix_timestamp(),
             action: "process_exec",
             peer_uid: event.uid,
+            peer_cgroup_id: None,
             session_id: Some(process),
             target: Some(event.filename.clone()),
             operation: Some(event.command.clone()),
@@ -124,6 +125,7 @@ fn kernel_audit_record(event: &KernelEvent) -> DaemonAuditRecord {
             timestamp_unix: OffsetDateTime::now_utc().unix_timestamp(),
             action: "resource_blocked",
             peer_uid: event.uid,
+            peer_cgroup_id: None,
             session_id: Some(process),
             target: Some(format!("{}:{}", event.device, event.inode)),
             operation: Some(event.action.map_or("mount_boundary".to_owned(), |action| {
@@ -141,7 +143,7 @@ fn handle_connection<B: crate::daemon::EnforcementBackend>(
 ) -> Result<()> {
     stream.set_read_timeout(Some(CLIENT_IO_TIMEOUT))?;
     stream.set_write_timeout(Some(CLIENT_IO_TIMEOUT))?;
-    let peer_uid = peer_uid(stream)?;
+    let peer = peer_identity(stream)?;
     let reader_stream = stream.try_clone()?;
     let mut reader = BufReader::new(reader_stream);
     let Some(request) = protocol::read_request(&mut reader)? else {
@@ -149,7 +151,7 @@ fn handle_connection<B: crate::daemon::EnforcementBackend>(
     };
     let request_id = request.request_id.clone();
     let now = OffsetDateTime::now_utc().unix_timestamp();
-    let response = match core.handle(peer_uid, request, now) {
+    let response = match core.handle(peer, request, now) {
         Ok(response) => response,
         Err(error) => Response {
             protocol_version: PROTOCOL_VERSION,
@@ -233,7 +235,7 @@ fn validate_runtime_directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn peer_uid(stream: &UnixStream) -> Result<u32> {
+fn peer_identity(stream: &UnixStream) -> Result<PeerIdentity> {
     let mut credentials = libc::ucred {
         pid: 0,
         uid: 0,
@@ -257,7 +259,67 @@ fn peer_uid(stream: &UnixStream) -> Result<u32> {
             "daemon peer credentials have an invalid size".to_owned(),
         ));
     }
-    Ok(credentials.uid)
+    let pid = u32::try_from(credentials.pid)
+        .map_err(|_| OsmanthusError::InvalidState("daemon peer PID is invalid".to_owned()))?;
+    Ok(PeerIdentity {
+        uid: credentials.uid,
+        cgroup_id: cgroup_id_for_pid(pid)?,
+    })
+}
+
+pub fn current_cgroup_id() -> Result<u64> {
+    cgroup_id_for_pid(std::process::id())
+}
+
+fn cgroup_id_for_pid(pid: u32) -> Result<u64> {
+    let contents = fs::read_to_string(format!("/proc/{pid}/cgroup"))?;
+    let relative = parse_unified_cgroup_path(&contents)?;
+    let root = Path::new("/sys/fs/cgroup").canonicalize()?;
+    let path = if relative == Path::new("/") {
+        root.clone()
+    } else {
+        root.join(relative.strip_prefix("/").map_err(|_| {
+            OsmanthusError::InvalidState("peer cgroup path is not absolute".to_owned())
+        })?)
+        .canonicalize()?
+    };
+    if !path.starts_with(&root) {
+        return Err(OsmanthusError::UnsafePath(format!(
+            "peer cgroup escaped {}",
+            root.display()
+        )));
+    }
+    let metadata = fs::symlink_metadata(&path)?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() || metadata.ino() == 0 {
+        return Err(OsmanthusError::UnsafePath(format!(
+            "peer cgroup is not a real cgroup directory: {}",
+            path.display()
+        )));
+    }
+    Ok(metadata.ino())
+}
+
+fn parse_unified_cgroup_path(contents: &str) -> Result<PathBuf> {
+    let mut paths = contents.lines().filter_map(|line| line.strip_prefix("0::"));
+    let value = paths.next().ok_or_else(|| {
+        OsmanthusError::InvalidState("peer is not attached to a cgroup v2 hierarchy".to_owned())
+    })?;
+    if paths.next().is_some() || value.is_empty() {
+        return Err(OsmanthusError::InvalidState(
+            "peer has an ambiguous cgroup v2 identity".to_owned(),
+        ));
+    }
+    let path = PathBuf::from(value);
+    if !path.is_absolute()
+        || path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::CurDir))
+    {
+        return Err(OsmanthusError::UnsafePath(format!(
+            "invalid peer cgroup path: {value}"
+        )));
+    }
+    Ok(path)
 }
 
 fn error_code(error: &OsmanthusError) -> &'static str {
@@ -267,5 +329,26 @@ fn error_code(error: &OsmanthusError) -> &'static str {
         OsmanthusError::SystemPolicyNotInitialized => "policy_not_initialized",
         OsmanthusError::UnsafePath(_) => "unsafe_path",
         _ => "request_failed",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_one_absolute_unified_cgroup_path() {
+        assert_eq!(
+            parse_unified_cgroup_path("0::/user.slice/session-7.scope\n").unwrap(),
+            PathBuf::from("/user.slice/session-7.scope")
+        );
+        assert!(parse_unified_cgroup_path("2:cpu:/legacy\n").is_err());
+        assert!(parse_unified_cgroup_path("0::/one\n0::/two\n").is_err());
+        assert!(parse_unified_cgroup_path("0::/one/../two\n").is_err());
+    }
+
+    #[test]
+    fn resolves_the_current_kernel_cgroup_identity() {
+        assert_ne!(current_cgroup_id().unwrap(), 0);
     }
 }

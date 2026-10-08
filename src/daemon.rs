@@ -21,6 +21,7 @@ const SESSION_IDLE_TIMEOUT_SECONDS: i64 = 86_400;
 #[derive(Debug, Clone, Copy)]
 struct ActiveSession {
     uid: u32,
+    cgroup_id: u64,
     last_activity_unix: i64,
 }
 
@@ -143,6 +144,8 @@ pub struct DaemonAuditRecord {
     pub action: &'static str,
     pub peer_uid: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub peer_cgroup_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
@@ -161,6 +164,19 @@ pub struct DaemonCore<A, L, B = StateBackend> {
     audit: L,
     sessions: BTreeMap<String, ActiveSession>,
     shutdown_requested: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PeerIdentity {
+    pub uid: u32,
+    pub cgroup_id: u64,
+}
+
+#[cfg(test)]
+impl From<u32> for PeerIdentity {
+    fn from(uid: u32) -> Self {
+        Self { uid, cgroup_id: 1 }
+    }
 }
 
 impl<A: AdministratorAuthenticator, L: DaemonAuditSink> DaemonCore<A, L, StateBackend> {
@@ -198,7 +214,15 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
         })
     }
 
-    pub fn handle(&mut self, peer_uid: u32, request: Request, now_unix: i64) -> Result<Response> {
+    pub fn handle(
+        &mut self,
+        peer: impl Into<PeerIdentity>,
+        request: Request,
+        now_unix: i64,
+    ) -> Result<Response> {
+        let peer = peer.into();
+        let peer_uid = peer.uid;
+        let peer_cgroup_id = peer.cgroup_id;
         request.validate()?;
         for lease in self.engine.expire_maintenance(now_unix) {
             self.backend.revoke_maintenance(&lease)?;
@@ -207,6 +231,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                 timestamp_unix: now_unix,
                 action: "maintenance_expired",
                 peer_uid: 0,
+                peer_cgroup_id: Some(lease.cgroup_id),
                 session_id: None,
                 target: None,
                 operation: None,
@@ -225,12 +250,13 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                 session_id,
                 operation,
             } => {
-                let decision = self.engine.decide(&operation, now_unix);
+                let decision = self.engine.decide(&operation, now_unix, peer.cgroup_id);
                 self.audit.append(&DaemonAuditRecord {
                     schema_version: 1,
                     timestamp_unix: now_unix,
                     action: "resource_evaluated",
-                    peer_uid,
+                    peer_uid: peer.uid,
+                    peer_cgroup_id: Some(peer.cgroup_id),
                     session_id: Some(session_id.clone()),
                     target: Some(operation.target.display().to_string()),
                     operation: Some(format!("{:?}", operation.action).to_ascii_lowercase()),
@@ -245,7 +271,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                 ttl_seconds,
                 authenticator_code,
             } => {
-                require_root_peer(peer_uid)?;
+                require_root_peer(peer.uid)?;
                 let code = Zeroizing::new(authenticator_code);
                 self.authenticator.verify(&code, now_unix)?;
                 let maximum = self.engine.maintenance_settings().max_ttl_seconds;
@@ -259,7 +285,8 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                     actions.into_iter().collect(),
                     now_unix,
                     ttl_seconds,
-                    peer_uid,
+                    peer.uid,
+                    peer.cgroup_id,
                 )?;
                 let lease_id = lease.id.clone();
                 let expires_at_unix = lease.expires_at_unix;
@@ -272,7 +299,8 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                     schema_version: 1,
                     timestamp_unix: now_unix,
                     action: "maintenance_granted",
-                    peer_uid,
+                    peer_uid: peer.uid,
+                    peer_cgroup_id: Some(peer.cgroup_id),
                     session_id: None,
                     target: Some(scope.display().to_string()),
                     operation: None,
@@ -312,6 +340,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                     timestamp_unix: now_unix,
                     action: "maintenance_revoked",
                     peer_uid,
+                    peer_cgroup_id: Some(peer_cgroup_id),
                     session_id: None,
                     target: None,
                     operation: None,
@@ -341,6 +370,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                     timestamp_unix: now_unix,
                     action: "decommission_authorized",
                     peer_uid,
+                    peer_cgroup_id: Some(peer_cgroup_id),
                     session_id: None,
                     target: None,
                     operation: None,
@@ -379,6 +409,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                     timestamp_unix: now_unix,
                     action: "policy_reloaded",
                     peer_uid,
+                    peer_cgroup_id: Some(peer_cgroup_id),
                     session_id: None,
                     target: None,
                     operation: None,
@@ -408,6 +439,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                         session_id.clone(),
                         ActiveSession {
                             uid: peer_uid,
+                            cgroup_id: peer_cgroup_id,
                             last_activity_unix: now_unix,
                         },
                     )
@@ -422,6 +454,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                     timestamp_unix: now_unix,
                     action: "shell_session_started",
                     peer_uid,
+                    peer_cgroup_id: Some(peer_cgroup_id),
                     session_id: Some(session_id.clone()),
                     target: Some(shell),
                     operation: None,
@@ -447,6 +480,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                         crate::protocol::SessionDirection::Output => "shell_output",
                     },
                     peer_uid,
+                    peer_cgroup_id: Some(peer_cgroup_id),
                     session_id: Some(session_id.clone()),
                     target: Some(data_base64),
                     operation: Some("base64".to_owned()),
@@ -468,6 +502,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                     timestamp_unix: now_unix,
                     action: "shell_session_ended",
                     peer_uid,
+                    peer_cgroup_id: Some(peer_cgroup_id),
                     session_id: Some(session_id.clone()),
                     target: None,
                     operation: Some(exit_code.to_string()),
@@ -508,14 +543,15 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
             .filter(|(_, session)| {
                 now_unix.saturating_sub(session.last_activity_unix) > SESSION_IDLE_TIMEOUT_SECONDS
             })
-            .map(|(id, session)| (id.clone(), session.uid))
+            .map(|(id, session)| (id.clone(), session.uid, session.cgroup_id))
             .collect::<Vec<_>>();
-        for (session_id, uid) in expired {
+        for (session_id, uid, cgroup_id) in expired {
             self.audit.append(&DaemonAuditRecord {
                 schema_version: 1,
                 timestamp_unix: now_unix,
                 action: "shell_session_expired",
                 peer_uid: uid,
+                peer_cgroup_id: Some(cgroup_id),
                 session_id: Some(session_id.clone()),
                 target: None,
                 operation: None,
@@ -802,6 +838,28 @@ mod tests {
                 decision: EnforcementDecision::MaintenanceAllowed { .. }
             }
         ));
+        let foreign = core
+            .handle(
+                PeerIdentity {
+                    uid: 1000,
+                    cgroup_id: 2,
+                },
+                request(
+                    "evaluate-foreign",
+                    RequestBody::Evaluate {
+                        session_id: "ssh.1000.2".to_owned(),
+                        operation: operation.clone(),
+                    },
+                ),
+                400,
+            )
+            .unwrap();
+        assert!(matches!(
+            foreign.body,
+            ResponseBody::Decision {
+                decision: EnforcementDecision::Blocked { .. }
+            }
+        ));
         let expired = core
             .handle(
                 1000,
@@ -925,7 +983,8 @@ mod tests {
         assert!(matches!(
             core.engine.decide(
                 &ResourceOperation::new(ProtectedAction::Delete, "/srv/app/data").unwrap(),
-                100
+                100,
+                1,
             ),
             EnforcementDecision::Blocked { .. }
         ));
@@ -1064,6 +1123,7 @@ mod tests {
             timestamp_unix: 100,
             action: "test",
             peer_uid: uid,
+            peer_cgroup_id: Some(1),
             session_id: None,
             target: None,
             operation: None,

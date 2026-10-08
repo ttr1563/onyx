@@ -189,6 +189,7 @@ pub struct MaintenanceLease {
     pub issued_at_unix: i64,
     pub expires_at_unix: i64,
     pub administrator_uid: u32,
+    pub cgroup_id: u64,
 }
 
 impl MaintenanceLease {
@@ -198,6 +199,7 @@ impl MaintenanceLease {
         now_unix: i64,
         ttl_seconds: i64,
         administrator_uid: u32,
+        cgroup_id: u64,
     ) -> Result<Self> {
         let scope = normalize_absolute(scope.as_ref())?;
         if scope == Path::new("/") {
@@ -208,6 +210,11 @@ impl MaintenanceLease {
         if actions.is_empty() {
             return Err(OsmanthusError::InvalidState(
                 "a maintenance lease requires at least one action".to_owned(),
+            ));
+        }
+        if cgroup_id == 0 {
+            return Err(OsmanthusError::InvalidState(
+                "a maintenance lease requires a nonzero cgroup ID".to_owned(),
             ));
         }
         if !(1..=MAX_MAINTENANCE_SECONDS).contains(&ttl_seconds) {
@@ -222,11 +229,13 @@ impl MaintenanceLease {
             issued_at_unix: now_unix,
             expires_at_unix: now_unix + ttl_seconds,
             administrator_uid,
+            cgroup_id,
         })
     }
 
-    fn allows(&self, operation: &ResourceOperation, now_unix: i64) -> bool {
+    fn allows(&self, operation: &ResourceOperation, now_unix: i64, cgroup_id: u64) -> bool {
         now_unix <= self.expires_at_unix
+            && self.cgroup_id == cgroup_id
             && self.actions.contains(&operation.action)
             && operation.target.starts_with(&self.scope)
     }
@@ -351,7 +360,12 @@ impl EnforcementEngine {
         expired
     }
 
-    pub fn decide(&self, operation: &ResourceOperation, now_unix: i64) -> EnforcementDecision {
+    pub fn decide(
+        &self,
+        operation: &ResourceOperation,
+        now_unix: i64,
+        cgroup_id: u64,
+    ) -> EnforcementDecision {
         let Some(root) = self
             .protected_roots
             .iter()
@@ -362,7 +376,7 @@ impl EnforcementEngine {
         if let Some(lease) = self
             .maintenance_leases
             .iter()
-            .find(|lease| lease.allows(operation, now_unix))
+            .find(|lease| lease.allows(operation, now_unix, cgroup_id))
         {
             return EnforcementDecision::MaintenanceAllowed {
                 lease_id: lease.id.clone(),
@@ -407,6 +421,8 @@ fn normalize_absolute(path: &Path) -> Result<PathBuf> {
 mod tests {
     use super::*;
 
+    const TEST_CGROUP_ID: u64 = 42;
+
     fn actions(values: &[ProtectedAction]) -> BTreeSet<ProtectedAction> {
         values.iter().copied().collect()
     }
@@ -431,7 +447,7 @@ mod tests {
         let operation =
             ResourceOperation::new(ProtectedAction::Delete, "/var/www/releases/old").unwrap();
         assert_eq!(
-            engine.decide(&operation, 100),
+            engine.decide(&operation, 100, TEST_CGROUP_ID),
             EnforcementDecision::Blocked {
                 protected_root: PathBuf::from("/var/www")
             }
@@ -446,11 +462,11 @@ mod tests {
         let unprotected_action =
             ResourceOperation::new(ProtectedAction::ChangePermissions, "/var/www/app").unwrap();
         assert_eq!(
-            engine.decide(&outside, 100),
+            engine.decide(&outside, 100, TEST_CGROUP_ID),
             EnforcementDecision::Unprotected
         );
         assert_eq!(
-            engine.decide(&unprotected_action, 100),
+            engine.decide(&unprotected_action, 100, TEST_CGROUP_ID),
             EnforcementDecision::Unprotected
         );
     }
@@ -464,6 +480,7 @@ mod tests {
             100,
             300,
             0,
+            TEST_CGROUP_ID,
         )
         .unwrap();
         let lease_id = lease.id.clone();
@@ -475,19 +492,23 @@ mod tests {
         let other_action =
             ResourceOperation::new(ProtectedAction::Rename, "/var/www/releases/old").unwrap();
         assert_eq!(
-            engine.decide(&allowed, 400),
+            engine.decide(&allowed, 400, TEST_CGROUP_ID),
             EnforcementDecision::MaintenanceAllowed { lease_id }
         );
         assert!(matches!(
-            engine.decide(&other_path, 400),
+            engine.decide(&allowed, 400, TEST_CGROUP_ID + 1),
             EnforcementDecision::Blocked { .. }
         ));
         assert!(matches!(
-            engine.decide(&other_action, 400),
+            engine.decide(&other_path, 400, TEST_CGROUP_ID),
             EnforcementDecision::Blocked { .. }
         ));
         assert!(matches!(
-            engine.decide(&allowed, 401),
+            engine.decide(&other_action, 400, TEST_CGROUP_ID),
+            EnforcementDecision::Blocked { .. }
+        ));
+        assert!(matches!(
+            engine.decide(&allowed, 401, TEST_CGROUP_ID),
             EnforcementDecision::Blocked { .. }
         ));
     }
@@ -501,6 +522,7 @@ mod tests {
             100,
             DEFAULT_MAINTENANCE_SECONDS,
             0,
+            TEST_CGROUP_ID,
         )
         .unwrap();
         assert!(engine.grant_maintenance(lease).is_err());
@@ -517,6 +539,7 @@ mod tests {
                     100,
                     300,
                     0,
+                    TEST_CGROUP_ID,
                 )
                 .unwrap(),
             )
@@ -528,6 +551,7 @@ mod tests {
             100,
             300,
             0,
+            TEST_CGROUP_ID,
         )
         .unwrap();
         assert!(engine.grant_maintenance(overlapping).is_err());
@@ -538,6 +562,7 @@ mod tests {
             100,
             300,
             0,
+            TEST_CGROUP_ID,
         )
         .unwrap();
         assert!(engine.grant_maintenance(distinct_action).is_ok());
@@ -547,7 +572,15 @@ mod tests {
     fn rejects_relative_root_global_lease_and_excessive_ttl() {
         assert!(ProtectedRoot::new("var/www", actions(&[ProtectedAction::Delete])).is_err());
         assert!(
-            MaintenanceLease::issue("/", actions(&[ProtectedAction::Delete]), 100, 300, 0).is_err()
+            MaintenanceLease::issue(
+                "/",
+                actions(&[ProtectedAction::Delete]),
+                100,
+                300,
+                0,
+                TEST_CGROUP_ID,
+            )
+            .is_err()
         );
         assert!(
             MaintenanceLease::issue(
@@ -555,7 +588,8 @@ mod tests {
                 actions(&[ProtectedAction::Delete]),
                 100,
                 MAX_MAINTENANCE_SECONDS + 1,
-                0
+                0,
+                TEST_CGROUP_ID,
             )
             .is_err()
         );
@@ -602,17 +636,18 @@ mod tests {
                     100,
                     300,
                     0,
+                    TEST_CGROUP_ID,
                 )
                 .unwrap(),
             )
             .unwrap();
         let operation = ResourceOperation::new(ProtectedAction::Delete, "/var/www/data").unwrap();
         assert!(matches!(
-            first.decide(&operation, 100),
+            first.decide(&operation, 100, TEST_CGROUP_ID),
             EnforcementDecision::MaintenanceAllowed { .. }
         ));
         assert!(matches!(
-            engine().decide(&operation, 100),
+            engine().decide(&operation, 100, TEST_CGROUP_ID),
             EnforcementDecision::Blocked { .. }
         ));
     }

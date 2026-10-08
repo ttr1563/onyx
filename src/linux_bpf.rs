@@ -215,7 +215,7 @@ impl PersistentLinuxBpfBackend {
                 "persistent protected-boundary BPF map has an incompatible schema".to_owned(),
             ));
         }
-        if self.maintenance_leases.key_size() != 16 || self.maintenance_leases.value_size() != 8 {
+        if self.maintenance_leases.key_size() != 24 || self.maintenance_leases.value_size() != 8 {
             return Err(OsmanthusError::InvalidState(
                 "persistent maintenance BPF map has an incompatible schema".to_owned(),
             ));
@@ -412,7 +412,7 @@ impl crate::daemon::EnforcementBackend for PersistentLinuxBpfBackend {
 use skeleton::{OsmanthusLsmSkel, OsmanthusLsmSkelBuilder};
 
 const ENABLED: [u8; 1] = [1];
-const BPF_ABI_VERSION: u32 = 2;
+const BPF_ABI_VERSION: u32 = 3;
 const LEGACY_PIN_DIRECTORY: &str = "/sys/fs/bpf/onyx";
 pub const PIN_DIRECTORY: &str = "/sys/fs/bpf/osmanthus";
 const METADATA_MAP: &str = "/sys/fs/bpf/osmanthus/metadata";
@@ -704,6 +704,13 @@ impl ResourceIdentity {
         bytes[8..12].copy_from_slice(&self.device.to_ne_bytes());
         bytes
     }
+
+    fn maintenance_key(self, action: ProtectedAction, cgroup_id: u64) -> [u8; 24] {
+        let mut bytes = [0_u8; 24];
+        bytes[..16].copy_from_slice(&self.key(action));
+        bytes[16..].copy_from_slice(&cgroup_id.to_ne_bytes());
+        bytes
+    }
 }
 
 fn resource_identity(path: &Path) -> Result<ResourceIdentity> {
@@ -835,10 +842,10 @@ fn update_maintenance_map(
                 .saturating_mul(1_000_000_000),
         )
         .ok_or_else(|| OsmanthusError::InvalidState("maintenance expiry overflow".to_owned()))?;
-    let mut installed: Vec<[u8; 16]> = Vec::new();
+    let mut installed: Vec<[u8; 24]> = Vec::new();
     for resource in resource_identities(&lease.scope)? {
         for action in &lease.actions {
-            let key = resource.key(*action);
+            let key = resource.maintenance_key(*action, lease.cgroup_id);
             if let Err(error) = map.update(&key, &deadline.to_ne_bytes(), MapFlags::ANY) {
                 let mut rollback_failures = Vec::new();
                 for installed_key in installed {
@@ -864,7 +871,7 @@ fn update_maintenance_map(
 fn delete_maintenance_map(map: &impl MapCore, lease: &MaintenanceLease) -> Result<()> {
     for resource in resource_identities(&lease.scope)? {
         for action in &lease.actions {
-            let key = resource.key(*action);
+            let key = resource.maintenance_key(*action, lease.cgroup_id);
             match map.delete(&key) {
                 Ok(()) => {}
                 Err(error) if error.kind() == libbpf_rs::ErrorKind::NotFound => {}
@@ -992,6 +999,17 @@ mod tests {
         assert_eq!(&key[..8], &identity.inode.to_ne_bytes());
         assert_eq!(&key[8..12], &identity.device.to_ne_bytes());
         assert_eq!(&key[12..], &2_u32.to_ne_bytes());
+    }
+
+    #[test]
+    fn maintenance_key_includes_cgroup_identity() {
+        let identity = ResourceIdentity {
+            inode: 0x0102_0304_0506_0708,
+            device: 0x1112_1314,
+        };
+        let key = identity.maintenance_key(ProtectedAction::Write, 0x2122_2324_2526_2728);
+        assert_eq!(&key[..16], &identity.key(ProtectedAction::Write));
+        assert_eq!(&key[16..], &0x2122_2324_2526_2728_u64.to_ne_bytes());
     }
 
     #[test]

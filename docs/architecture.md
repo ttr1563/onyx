@@ -22,7 +22,7 @@ process
   └─ filesystem operation
        └─ BPF LSM walks target ancestors
             ├─ no protected key ── allow
-            ├─ active path/action lease ── allow
+            ├─ active path/action/cgroup lease ── allow
             └─ protected key ── audit event + synchronous errno
 ```
 
@@ -59,12 +59,18 @@ Linux root remains outside the threat boundary.
 ## Maintenance
 
 A maintenance lease contains a UUID, canonical scope, operation classes,
-administrator UID, issue time, and expiry. Default and maximum durations are
-policy settings, initially five and thirty minutes, with an absolute 24-hour
+administrator UID, kernel cgroup ID, issue time, and expiry. Default and maximum
+durations are policy settings, initially five and thirty minutes, with an absolute 24-hour
 limit. `maintenance pause` selects every configured action below one path but is
-implemented as the same scoped lease rather than detaching enforcement. Kernel
-expiry uses a monotonic deadline. Leases exist only in daemon memory and the BPF
-map, are auditable, can be revoked, and are cleared on daemon restart.
+implemented as the same scoped lease rather than detaching enforcement. The
+daemon derives the cgroup from the Unix-socket peer PID; the client cannot
+select another session's cgroup. The BPF lookup includes the current kernel
+cgroup ID, so a matching path and action remain denied from another cgroup.
+Kernel expiry uses a monotonic deadline. Leases exist only in daemon memory and
+the BPF map, are auditable, can be revoked, and are cleared on daemon restart.
+A cgroup is an execution boundary, not a person: every process sharing it
+receives the lease. SSM/service entry points that share one cgroup require a
+dedicated transient service before maintenance begins.
 
 ## Shell evidence
 

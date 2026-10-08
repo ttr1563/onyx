@@ -56,6 +56,11 @@ struct resource_key {
     unsigned int action;
 };
 
+struct maintenance_key {
+    struct resource_key resource;
+    unsigned long long cgroup_id;
+};
+
 struct boundary_key {
     unsigned long long inode;
     unsigned int device;
@@ -103,7 +108,7 @@ struct {
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 1024);
-    __type(key, struct resource_key);
+    __type(key, struct maintenance_key);
     __type(value, unsigned long long);
 } osmanthus_maintenance_leases SEC(".maps");
 
@@ -201,6 +206,7 @@ static long guard_dentry_step(unsigned int index, void *data)
     struct super_block *superblock;
     struct dentry *parent;
     struct resource_key key = {};
+    struct maintenance_key maintenance_key = {};
     unsigned long long *lease_expiry;
 
     if (!current)
@@ -216,7 +222,9 @@ static long guard_dentry_step(unsigned int index, void *data)
     key.action = context->action;
     context->event_key = key;
 
-    lease_expiry = bpf_map_lookup_elem(&osmanthus_maintenance_leases, &key);
+    maintenance_key.resource = key;
+    maintenance_key.cgroup_id = bpf_get_current_cgroup_id();
+    lease_expiry = bpf_map_lookup_elem(&osmanthus_maintenance_leases, &maintenance_key);
     if (lease_expiry && context->now <= *lease_expiry) {
         context->decision = 0;
         return 1;

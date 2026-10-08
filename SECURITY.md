@@ -30,10 +30,11 @@ boot chain. Such an identity can replace local policy, code, BPF state, and audi
 records. TOTP provides a separately held approval factor but is not proof of
 physical presence.
 
-Current operation classes cover deletion, rename or move, `O_TRUNC`, and
-ownership or mode changes. Non-truncating writes are not yet classified as
-destructive overwrite. Native Windows Server enforcement is a separate,
-unimplemented platform track; WSL does not provide that coverage.
+Current operation classes cover deletion, rename or move, `O_TRUNC`, opt-in
+ordinary writes and writable shared mappings, and ownership or mode changes.
+Maintenance leases additionally require the current kernel cgroup. Native
+Windows Server enforcement is a separate, unimplemented platform track; WSL
+does not provide that coverage.
 
 The public Onyx v0.1.3 wrapper has a different and weaker boundary. Its state is
 not imported automatically into Osmanthus.

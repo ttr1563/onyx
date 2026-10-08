@@ -43,6 +43,8 @@ test -x "$temporary/usr/bin/osmanthus-shell"
 test -s "$temporary/lib/systemd/system/osmanthusd.service"
 test -s "$temporary/etc/logrotate.d/osmanthus"
 test -s "$temporary/usr/share/doc/osmanthus/ssm.md.gz"
+gzip -cd "$temporary/usr/share/doc/osmanthus/README.md.gz" | grep -Fq "caller cgroup"
+gzip -cd "$temporary/usr/share/doc/osmanthus/operations.md.gz" | grep -Fq "dedicated transient systemd service"
 test -s "$temporary/usr/share/osmanthus/ssm/osmanthus-session.json"
 "$temporary/usr/bin/osmanthus" --version | grep -Fx "osmanthus $version"
 "$temporary/usr/bin/osmanthus" daemon --help | grep -F decommission

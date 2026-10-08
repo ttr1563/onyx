@@ -49,8 +49,9 @@ not require an `osmanthus run -- ...` prefix.
 11. Enforcement is scoped by protected resource roots and operation classes.
     Commands outside those roots remain usable; Osmanthus must not implement a broad
     executable denylist as the final security boundary.
-12. An administrator can create a temporary maintenance lease for named roots
-    and operation classes. A lease requires operating-system administrator
+12. An administrator can create a temporary maintenance lease for named roots,
+    operation classes, and the authenticated caller's kernel cgroup. A lease
+    requires operating-system administrator
     privilege and administrator authentication, has a bounded lifetime, is
     fully audited, can be revoked early, and never survives a daemon restart.
 
@@ -68,11 +69,13 @@ the operating-system enforcement backend, so changing `rm` to Python, Node.js,
 or another executable does not bypass protection.
 
 Maintenance mode is represented by an in-memory lease rather than disabling
-the daemon or unloading enforcement. A lease is limited to selected protected
-roots and operation classes. Its default and maximum durations are policy
+the daemon or unloading enforcement. A lease is limited to the authenticated
+request's kernel cgroup, selected protected roots, and operation classes. Its
+default and maximum durations are policy
 settings; the absolute implementation limit is 24 hours. A pause is a lease for
 all configured actions below one selected protected path, not a daemon stop or
-host-wide permanent disablement. Every lease expires on daemon restart.
+host-wide permanent disablement. A different cgroup remains denied even for the
+same UID. Every lease expires on daemon restart.
 Creation, use, revocation, and expiry are audit events.
 
 ## Platform scope
@@ -125,14 +128,16 @@ satisfy pre-execution blocking.
   still denied when it targets a protected root.
 - A harmless command and destructive work outside protected roots remain
   available unless another explicit policy applies.
-- A valid maintenance lease allows only its named roots and operation classes;
-  an expired lease or an operation outside its scope remains denied.
+- A valid maintenance lease allows only its named roots, operation classes, and
+  bound cgroup; another cgroup, an expired lease, or an operation outside its
+  scope remains denied.
 - A nested shell and a script cannot escape descendant process supervision.
 - Killing or disconnecting the monitor cannot turn a protected session into an
   unmonitored session.
 - The protected identity cannot read the approval verifier secret or modify the
   effective policy and audit store.
-- A scoped maintenance lease allows only its named roots and operation classes,
+- A scoped maintenance lease allows only its named roots, operation classes,
+  and cgroup,
   expires automatically, is revoked by daemon restart, and never disables
   monitoring or audit.
 - Harmless interactive and deployment commands preserve exit status and usable

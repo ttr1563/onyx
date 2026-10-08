@@ -23,7 +23,7 @@ authentication.
 - Can supervise an enrolled interactive shell through a PTY and record its
   input/output without changing command syntax.
 - Allows a root administrator with the policy TOTP to create a maintenance
-  lease for one path, selected operation classes, and at most 30 minutes.
+  lease for one path, selected operation classes, duration, and caller cgroup.
 - Keeps BPF enforcement pinned if `osmanthusd` crashes or restarts. Maintenance
   leases are memory-only and disappear on restart.
 
@@ -206,7 +206,11 @@ sudo osmanthus maintenance pause --path /srv/production/database --for 8h
 
 A lease never disables logging, is lost when the daemon restarts, and cannot
 authorize another path or action class. `maintenance pause` is still scoped to
-one protected path; it is not a host-wide off switch.
+one protected path and the cgroup from which the authenticated request was
+made; another SSH/login cgroup remains blocked. Every process already sharing
+that cgroup receives the lease. For SSM or another entry point that may share a
+service cgroup, first enter a dedicated transient systemd service as described
+in [the operations runbook](docs/operations.md).
 
 ## Local evidence
 

@@ -362,11 +362,12 @@ fn maintenance_command(command: MaintenanceCommands) -> Result<u8> {
                         .collect::<Vec<_>>()
                         .join(",");
                     println!(
-                        "{}\t{}\t{}\t{}",
+                        "{}\t{}\t{}\t{}\tcgroup:{}",
                         lease.id,
                         lease.scope.display(),
                         actions,
-                        lease.expires_at_unix
+                        lease.expires_at_unix,
+                        lease.cgroup_id,
                     );
                 }
                 Ok(0)
@@ -422,6 +423,10 @@ fn grant_maintenance(
         } => {
             println!("Maintenance lease: {lease_id}");
             println!("Expires at Unix time: {expires_at_unix}");
+            println!(
+                "Bound to current cgroup: {}",
+                osmanthus_guard::linux_daemon::current_cgroup_id()?
+            );
             Ok(0)
         }
         other => unexpected_daemon_response(other),
