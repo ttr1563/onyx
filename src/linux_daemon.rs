@@ -35,6 +35,7 @@ struct PreparedRequest {
     peer: PeerIdentity,
     request: protocol::Request,
     response_sender: SyncSender<Response>,
+    completion_receiver: Receiver<()>,
 }
 
 #[derive(Default)]
@@ -235,17 +236,21 @@ fn read_and_respond(
         return Ok(());
     };
     let (response_sender, response_receiver) = mpsc::sync_channel(0);
+    let (completion_sender, completion_receiver) = mpsc::sync_channel(0);
     sender
         .send(PreparedRequest {
             peer,
             request,
             response_sender,
+            completion_receiver,
         })
         .map_err(|_| OsmanthusError::InvalidState("daemon request loop stopped".to_owned()))?;
     let response = response_receiver
         .recv()
         .map_err(|_| OsmanthusError::InvalidState("daemon request loop stopped".to_owned()))?;
-    protocol::write_response(&mut stream, &response)
+    let result = protocol::write_response(&mut stream, &response);
+    let _ = completion_sender.send(());
+    result
 }
 
 fn process_request<B: crate::daemon::EnforcementBackend>(
@@ -266,6 +271,9 @@ fn process_request<B: crate::daemon::EnforcementBackend>(
         },
     };
     let _ = prepared.response_sender.send(response);
+    if core.shutdown_requested() {
+        let _ = prepared.completion_receiver.recv_timeout(CLIENT_IO_TIMEOUT);
+    }
 }
 
 fn create_listener() -> Result<UnixListener> {

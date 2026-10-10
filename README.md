@@ -252,8 +252,7 @@ network controls are designed but not yet advertised as enforced features. See
 This branch is not ready for a production release until all of the following
 are completed and tested from packages:
 
-- x86_64/amd64 packaged daemon, PTY transcript, crash, upgrade, rollback, and
-  audit-failure tests;
+- packaged upgrade/rollback and AWS SSM entry-point tests;
 - a documented break-glass restore test for a lost policy-administrator authenticator;
 - packaged verification of opt-in non-truncating writes and long maintenance;
 - signed RPM and deb repository metadata with install and rollback verification.
