@@ -246,25 +246,6 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                 daemon_version: env!("CARGO_PKG_VERSION").to_owned(),
                 backend: self.backend.state(),
             },
-            RequestBody::Evaluate {
-                session_id,
-                operation,
-            } => {
-                let decision = self.engine.decide(&operation, now_unix, peer.cgroup_id);
-                self.audit.append(&DaemonAuditRecord {
-                    schema_version: 1,
-                    timestamp_unix: now_unix,
-                    action: "resource_evaluated",
-                    peer_uid: peer.uid,
-                    peer_cgroup_id: Some(peer.cgroup_id),
-                    session_id: Some(session_id.clone()),
-                    target: Some(operation.target.display().to_string()),
-                    operation: Some(format!("{:?}", operation.action).to_ascii_lowercase()),
-                    decision: Some(decision_name(&decision).to_owned()),
-                    lease_id: decision_lease_id(&decision),
-                })?;
-                ResponseBody::Decision { decision }
-            }
             RequestBody::MaintenanceGrant {
                 scope,
                 actions,
@@ -471,7 +452,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                 direction,
                 data_base64,
             } => {
-                self.require_session_owner(&session_id, peer_uid)?;
+                self.require_session_owner(&session_id, peer_uid, peer_cgroup_id)?;
                 self.audit.append(&DaemonAuditRecord {
                     schema_version: 1,
                     timestamp_unix: now_unix,
@@ -496,7 +477,7 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
                 session_id,
                 exit_code,
             } => {
-                self.require_session_owner(&session_id, peer_uid)?;
+                self.require_session_owner(&session_id, peer_uid, peer_cgroup_id)?;
                 self.audit.append(&DaemonAuditRecord {
                     schema_version: 1,
                     timestamp_unix: now_unix,
@@ -524,11 +505,18 @@ impl<A: AdministratorAuthenticator, L: DaemonAuditSink, B: EnforcementBackend> D
         self.shutdown_requested
     }
 
-    fn require_session_owner(&self, session_id: &str, peer_uid: u32) -> Result<()> {
+    fn require_session_owner(
+        &self,
+        session_id: &str,
+        peer_uid: u32,
+        peer_cgroup_id: u64,
+    ) -> Result<()> {
         match self.sessions.get(session_id) {
-            Some(session) if session.uid == peer_uid => Ok(()),
+            Some(session) if session.uid == peer_uid && session.cgroup_id == peer_cgroup_id => {
+                Ok(())
+            }
             Some(_) => Err(OsmanthusError::InvalidState(
-                "monitored session belongs to a different UID".to_owned(),
+                "monitored session belongs to a different UID or cgroup".to_owned(),
             )),
             None => Err(OsmanthusError::InvalidState(format!(
                 "monitored session not found: {session_id}"
@@ -569,23 +557,6 @@ fn require_root_peer(peer_uid: u32) -> Result<()> {
         return Err(OsmanthusError::RootRequired);
     }
     Ok(())
-}
-
-fn decision_name(decision: &crate::enforcement::EnforcementDecision) -> &'static str {
-    match decision {
-        crate::enforcement::EnforcementDecision::Unprotected => "unprotected",
-        crate::enforcement::EnforcementDecision::Blocked { .. } => "blocked",
-        crate::enforcement::EnforcementDecision::MaintenanceAllowed { .. } => "maintenance_allowed",
-    }
-}
-
-fn decision_lease_id(decision: &crate::enforcement::EnforcementDecision) -> Option<String> {
-    match decision {
-        crate::enforcement::EnforcementDecision::MaintenanceAllowed { lease_id } => {
-            Some(lease_id.clone())
-        }
-        _ => None,
-    }
 }
 
 fn validate_owned_directory(path: &Path, uid: u32, mode: u32) -> Result<()> {
@@ -699,36 +670,6 @@ mod tests {
     }
 
     #[test]
-    fn evaluates_protected_resources_and_audits_the_decision() {
-        let mut core = core();
-        let response = core
-            .handle(
-                1000,
-                request(
-                    "evaluate-1",
-                    RequestBody::Evaluate {
-                        session_id: "ssh.1000.1".to_owned(),
-                        operation: ResourceOperation::new(
-                            ProtectedAction::Delete,
-                            "/var/www/releases/old",
-                        )
-                        .unwrap(),
-                    },
-                ),
-                100,
-            )
-            .unwrap();
-        assert!(matches!(
-            response.body,
-            ResponseBody::Decision {
-                decision: EnforcementDecision::Blocked { .. }
-            }
-        ));
-        assert_eq!(core.audit.records[0].action, "resource_evaluated");
-        assert_eq!(core.audit.records[0].peer_uid, 1000);
-    }
-
-    #[test]
     fn maintenance_requires_root_and_authentication() {
         let grant = || {
             request(
@@ -819,66 +760,17 @@ mod tests {
         ));
         let operation =
             ResourceOperation::new(ProtectedAction::Delete, "/var/www/releases/old").unwrap();
-        let allowed = core
-            .handle(
-                1000,
-                request(
-                    "evaluate-1",
-                    RequestBody::Evaluate {
-                        session_id: "ssh.1000.1".to_owned(),
-                        operation: operation.clone(),
-                    },
-                ),
-                400,
-            )
-            .unwrap();
+        let allowed = core.engine.decide(&operation, 400, 1);
         assert!(matches!(
-            allowed.body,
-            ResponseBody::Decision {
-                decision: EnforcementDecision::MaintenanceAllowed { .. }
-            }
+            allowed,
+            EnforcementDecision::MaintenanceAllowed { .. }
         ));
-        let foreign = core
-            .handle(
-                PeerIdentity {
-                    uid: 1000,
-                    cgroup_id: 2,
-                },
-                request(
-                    "evaluate-foreign",
-                    RequestBody::Evaluate {
-                        session_id: "ssh.1000.2".to_owned(),
-                        operation: operation.clone(),
-                    },
-                ),
-                400,
-            )
+        let foreign = core.engine.decide(&operation, 400, 2);
+        assert!(matches!(foreign, EnforcementDecision::Blocked { .. }));
+        core.handle(0, request("health-after-expiry", RequestBody::Health), 401)
             .unwrap();
-        assert!(matches!(
-            foreign.body,
-            ResponseBody::Decision {
-                decision: EnforcementDecision::Blocked { .. }
-            }
-        ));
-        let expired = core
-            .handle(
-                1000,
-                request(
-                    "evaluate-2",
-                    RequestBody::Evaluate {
-                        session_id: "ssh.1000.1".to_owned(),
-                        operation,
-                    },
-                ),
-                401,
-            )
-            .unwrap();
-        assert!(matches!(
-            expired.body,
-            ResponseBody::Decision {
-                decision: EnforcementDecision::Blocked { .. }
-            }
-        ));
+        let expired = core.engine.decide(&operation, 401, 1);
+        assert!(matches!(expired, EnforcementDecision::Blocked { .. }));
         assert!(
             core.audit
                 .records
@@ -1077,7 +969,7 @@ mod tests {
     }
 
     #[test]
-    fn shell_session_rejects_unenrolled_uid_and_cross_uid_writes() {
+    fn shell_session_rejects_unenrolled_uid_and_cross_identity_writes() {
         let start = || {
             request(
                 "session-start",
@@ -1095,6 +987,24 @@ mod tests {
                 2000,
                 request(
                     "session-data",
+                    RequestBody::SessionData {
+                        session_id: "ssh.test".to_owned(),
+                        direction: crate::protocol::SessionDirection::Output,
+                        data_base64: data_encoding::BASE64.encode(b"forged"),
+                    }
+                ),
+                101
+            )
+            .is_err()
+        );
+        assert!(
+            core.handle(
+                PeerIdentity {
+                    uid: 1000,
+                    cgroup_id: 2,
+                },
+                request(
+                    "session-data-foreign-cgroup",
                     RequestBody::SessionData {
                         session_id: "ssh.test".to_owned(),
                         direction: crate::protocol::SessionDirection::Output,

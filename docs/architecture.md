@@ -8,8 +8,8 @@ an operation only when both dimensions match:
 1. the target is the configured root or one of its descendants; and
 2. the operation class is enabled for that root.
 
-The classes are delete, rename/move, truncate through `O_TRUNC`, opt-in ordinary
-write, and ownership/mode change. This keeps the same operation blocked when it
+The classes are delete, rename/move (including exchange), open-time or direct
+truncate, opt-in ordinary write, and ownership/mode change. This keeps the same operation blocked when it
 comes from `rm`, Python, Node.js, or another process, while leaving unrelated
 paths usable. The global write hook returns immediately unless at least one root
 enables `write`.
@@ -32,6 +32,11 @@ process
 restart, existing links are reopened, policy maps are reconciled, and all
 maintenance entries are cleared.
 
+Socket reads run in bounded workers: at most 64 connections globally and four
+per UID. Parsed requests are serialized back through the daemon core. Shell
+session data and close requests must match both the UID and cgroup recorded at
+session start; the public socket has no general-purpose audit-injection request.
+
 The pinned map set includes an explicit BPF ABI version. Same-ABI upgrades reuse
 the existing maps and promote a complete replacement link set only after every
 new program is attached and pinned. If the ABI version or map layout is
@@ -49,6 +54,13 @@ converts the kernel-internal `dev_t` to the same encoded representation returned
 by userspace `stat`, so roots on ordinary block filesystems and virtual
 filesystems resolve to the same map key. The daemon keeps the host `/tmp` and
 `/var/tmp` namespaces because configured roots are host paths.
+
+Hard-link topology is an action-independent boundary. Links into or out of a
+protected tree are denied, including during maintenance, and policy activation
+recursively rejects existing hard-linked non-directory entries. Candidate
+boundary keys are installed before that scan, so a concurrent link cannot be
+created between validation and activation. Symbolic links are not followed and
+the scan fails closed after one million entries.
 
 ## Policy integrity
 
@@ -83,6 +95,8 @@ the BPF map, are auditable, can be revoked, and are cleared on daemon restart.
 A cgroup is an execution boundary, not a person: every process sharing it
 receives the lease. SSM/service entry points that share one cgroup require a
 dedicated transient service before maintenance begins.
+Hard-link creation is not leaseable because an alias outside the protected tree
+could remain after the lease expires.
 
 ## Shell evidence
 

@@ -12,6 +12,8 @@ struct super_block {
 
 struct inode {
     unsigned long i_ino;
+    unsigned int i_nlink;
+    unsigned short i_mode;
     struct super_block *i_sb;
 } __attribute__((preserve_access_index));
 
@@ -49,6 +51,15 @@ enum osmanthus_event_type {
     OSMANTHUS_EVENT_EXEC = 1,
     OSMANTHUS_EVENT_RESOURCE_BLOCKED = 2,
 };
+
+enum osmanthus_boundary_operation {
+    OSMANTHUS_MOUNT_BOUNDARY = 6,
+    OSMANTHUS_HARD_LINK = 7,
+};
+
+#define OSMANTHUS_RENAME_EXCHANGE (1U << 1)
+#define OSMANTHUS_MODE_TYPE_MASK 0170000
+#define OSMANTHUS_MODE_DIRECTORY 0040000
 
 struct resource_key {
     unsigned long long inode;
@@ -272,15 +283,16 @@ static __always_inline int guard_dentry(struct dentry *start, unsigned int actio
     return -ELOOP;
 }
 
-struct mount_guard_context {
+struct boundary_guard_context {
     struct dentry *current;
     struct resource_key event_key;
+    unsigned int operation;
     int decision;
 };
 
-static long guard_mount_step(unsigned int index, void *data)
+static long guard_boundary_step(unsigned int index, void *data)
 {
-    struct mount_guard_context *context = data;
+    struct boundary_guard_context *context = data;
     struct dentry *current = context->current;
     struct inode *inode;
     struct super_block *superblock;
@@ -299,7 +311,7 @@ static long guard_mount_step(unsigned int index, void *data)
     key.device = userspace_device_id(BPF_CORE_READ(superblock, s_dev));
     context->event_key.inode = key.inode;
     context->event_key.device = key.device;
-    context->event_key.action = 6;
+    context->event_key.action = context->operation;
     if (bpf_map_lookup_elem(&osmanthus_protected_boundaries, &key)) {
         context->decision = -EPERM;
         return 1;
@@ -313,14 +325,15 @@ static long guard_mount_step(unsigned int index, void *data)
     return 0;
 }
 
-static __always_inline int guard_mount_boundary(struct dentry *start)
+static __always_inline int guard_boundary(struct dentry *start, unsigned int operation)
 {
-    struct mount_guard_context context = {
+    struct boundary_guard_context context = {
         .current = start,
+        .operation = operation,
         .decision = -ELOOP,
     };
 
-    if (bpf_loop(OSMANTHUS_MAX_ANCESTORS, guard_mount_step, &context, 0) < 0)
+    if (bpf_loop(OSMANTHUS_MAX_ANCESTORS, guard_boundary_step, &context, 0) < 0)
         context.decision = -ELOOP;
     /* Keep LSM exits literal: some verifiers lose signed range after bpf_loop callbacks. */
     if (context.decision == 0)
@@ -331,13 +344,29 @@ static __always_inline int guard_mount_boundary(struct dentry *start)
     return -ELOOP;
 }
 
+static __always_inline int has_multiple_non_directory_links(struct dentry *dentry)
+{
+    struct inode *inode;
+    unsigned short mode;
+
+    if (!dentry)
+        return 0;
+    inode = BPF_CORE_READ(dentry, d_inode);
+    if (!inode)
+        return 0;
+    mode = BPF_CORE_READ(inode, i_mode);
+    if ((mode & OSMANTHUS_MODE_TYPE_MASK) == OSMANTHUS_MODE_DIRECTORY)
+        return 0;
+    return BPF_CORE_READ(inode, i_nlink) > 1;
+}
+
 SEC("lsm/sb_mount")
 int BPF_PROG(osmanthus_sb_mount, const char *dev_name, const struct path *path,
              const char *type, unsigned long flags, void *data, int ret)
 {
     if (ret)
         return ret;
-    return guard_mount_boundary(BPF_CORE_READ(path, dentry));
+    return guard_boundary(BPF_CORE_READ(path, dentry), OSMANTHUS_MOUNT_BOUNDARY);
 }
 
 SEC("lsm/move_mount")
@@ -346,7 +375,7 @@ int BPF_PROG(osmanthus_move_mount, const struct path *from_path,
 {
     if (ret)
         return ret;
-    return guard_mount_boundary(BPF_CORE_READ(to_path, dentry));
+    return guard_boundary(BPF_CORE_READ(to_path, dentry), OSMANTHUS_MOUNT_BOUNDARY);
 }
 
 SEC("lsm/path_unlink")
@@ -365,6 +394,20 @@ int BPF_PROG(osmanthus_path_rmdir, const struct path *dir, struct dentry *dentry
     return guard_dentry(dentry, OSMANTHUS_DELETE);
 }
 
+SEC("lsm/path_link")
+int BPF_PROG(osmanthus_path_link, struct dentry *old_dentry,
+             const struct path *new_dir, struct dentry *new_dentry, int ret)
+{
+    int decision;
+
+    if (ret)
+        return ret;
+    decision = guard_boundary(old_dentry, OSMANTHUS_HARD_LINK);
+    if (decision)
+        return decision;
+    return guard_boundary(BPF_CORE_READ(new_dir, dentry), OSMANTHUS_HARD_LINK);
+}
+
 SEC("lsm/path_rename")
 int BPF_PROG(osmanthus_path_rename, const struct path *old_dir, struct dentry *old_dentry,
              const struct path *new_dir, struct dentry *new_dentry,
@@ -374,10 +417,40 @@ int BPF_PROG(osmanthus_path_rename, const struct path *old_dir, struct dentry *o
 
     if (ret)
         return ret;
+    if (has_multiple_non_directory_links(old_dentry)) {
+        decision = guard_boundary(old_dentry, OSMANTHUS_HARD_LINK);
+        if (decision)
+            return decision;
+        decision = guard_boundary(BPF_CORE_READ(new_dir, dentry), OSMANTHUS_HARD_LINK);
+        if (decision)
+            return decision;
+    }
+    if ((flags & OSMANTHUS_RENAME_EXCHANGE)
+        && has_multiple_non_directory_links(new_dentry)) {
+        decision = guard_boundary(new_dentry, OSMANTHUS_HARD_LINK);
+        if (decision)
+            return decision;
+        decision = guard_boundary(BPF_CORE_READ(old_dir, dentry), OSMANTHUS_HARD_LINK);
+        if (decision)
+            return decision;
+    }
     decision = guard_dentry(old_dentry, OSMANTHUS_RENAME);
     if (decision)
         return decision;
+    if (flags & OSMANTHUS_RENAME_EXCHANGE) {
+        decision = guard_dentry(new_dentry, OSMANTHUS_RENAME);
+        if (decision)
+            return decision;
+    }
     return guard_dentry(BPF_CORE_READ(new_dir, dentry), OSMANTHUS_RENAME);
+}
+
+SEC("lsm/path_truncate")
+int BPF_PROG(osmanthus_path_truncate, const struct path *path, int ret)
+{
+    if (ret)
+        return ret;
+    return guard_dentry(BPF_CORE_READ(path, dentry), OSMANTHUS_TRUNCATE);
 }
 
 SEC("lsm/file_open")

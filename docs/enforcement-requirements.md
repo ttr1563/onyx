@@ -59,7 +59,7 @@ not require an `osmanthus run -- ...` prefix.
 
 A policy names canonical absolute roots and the destructive operation classes
 guarded below them. Initial operation classes are deletion, rename or move,
-    truncate, opt-in non-truncating write, ownership or mode change, and separately
+    open-time or direct truncate, opt-in non-truncating write, ownership or mode change, and separately
 named service-control operations. Read-only access and unrelated paths are not
 blocked merely because Osmanthus is installed.
 
@@ -77,6 +77,11 @@ all configured actions below one selected protected path, not a daemon stop or
 host-wide permanent disablement. A different cgroup remains denied even for the
 same UID. Every lease expires on daemon restart.
 Creation, use, revocation, and expiry are audit events.
+
+Hard links into or out of a protected tree are denied independently of operation
+classes and maintenance. A root that already contains a hard-linked
+non-directory entry is rejected at activation so an alias outside the ancestry
+boundary cannot bypass policy.
 
 ## Platform scope
 
@@ -126,6 +131,8 @@ satisfy pre-execution blocking.
   than a broad executable denylist.
 - The same destructive operation implemented through a different executable is
   still denied when it targets a protected root.
+- Direct truncate, rename exchange, and hard-link alias paths are denied before
+  they can change or expose a protected tree.
 - A harmless command and destructive work outside protected roots remain
   available unless another explicit policy applies.
 - A valid maintenance lease allows only its named roots, operation classes, and

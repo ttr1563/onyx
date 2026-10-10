@@ -59,6 +59,11 @@ Use `--action write` only when ordinary application writes must be stopped too.
 This is suitable for immutable release or credential directories, but normally
 not for a live database data directory.
 
+Before enrollment, remove or redesign hard-linked non-directory entries below
+the selected root. Osmanthus rejects such a root and always blocks creation of
+hard links into or out of an active protected tree. Maintenance does not relax
+this topology rule.
+
 Verify both sides of the boundary with disposable files. Never select `/`, a
 symlink, or an untested production root for the first check.
 
@@ -157,6 +162,8 @@ its path is equal to, above, or below an active lease and their operation sets
 overlap; revoke the earlier lease or use a non-overlapping operation class.
 Every process already in the bound cgroup receives the lease, so do not treat a
 shared service cgroup as an individual operator session.
+Hard-link creation across a protected boundary remains denied during a lease;
+copy the file explicitly within the approved workflow instead.
 
 An already-existing writable shared memory mapping can continue changing its
 file after `write` protection is activated. Stop or restart writers before

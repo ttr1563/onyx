@@ -13,7 +13,8 @@ authentication.
 
 ## What it does
 
-- Denies delete, rename/move, `O_TRUNC`, opt-in non-truncating writes,
+- Denies delete, rename/move (including exchange), open-time and direct truncate,
+  opt-in non-truncating writes,
   ownership changes, and mode changes
   below administrator-selected roots using Linux BPF LSM hooks.
 - Applies the filesystem boundary host-wide, including alternate interpreters,
@@ -26,6 +27,8 @@ authentication.
   lease for one path, selected operation classes, duration, and caller cgroup.
 - Keeps BPF enforcement pinned if `osmanthusd` crashes or restarts. Maintenance
   leases are memory-only and disappear on restart.
+- Rejects hard links into or out of a protected tree and refuses to enroll a
+  tree that already contains hard-linked non-directory entries.
 
 Osmanthus does not protect a host after root, the kernel, or the boot trust chain is
 compromised. It does not hide policy values: integrity comes from root ownership,
@@ -148,6 +151,10 @@ is granted.
 Each policy mutation requires root and the policy-administrator TOTP. The CLI
 writes a validated replacement and asks the daemon to reload it. If daemon
 reload or audit fails, it restores the previous policy.
+Protected roots must not contain hard-linked non-directory entries. Osmanthus
+checks this recursively during activation and keeps hard-link topology changes
+blocked even during maintenance, because an external alias would outlive a
+temporary lease.
 
 Enroll a non-root UID for process evidence and select its real shell:
 
@@ -217,6 +224,8 @@ made; another SSH/login cgroup remains blocked. Every process already sharing
 that cgroup receives the lease. For SSM or another entry point that may share a
 service cgroup, first enter a dedicated transient systemd service as described
 in [the operations runbook](docs/operations.md).
+Hard-link creation across a protected boundary is not an operation class and is
+never enabled by a maintenance lease.
 
 ## Local evidence
 
@@ -243,9 +252,11 @@ network controls are designed but not yet advertised as enforced features. See
 This branch is not ready for a production release until all of the following
 are completed and tested from packages:
 
-- packaged daemon, PTY transcript, crash, rollback, and audit-failure tests;
+- x86_64/amd64 packaged daemon, PTY transcript, crash, upgrade, rollback, and
+  audit-failure tests;
 - a documented break-glass restore test for a lost policy-administrator authenticator;
 - packaged verification of opt-in non-truncating writes and long maintenance;
+- signed RPM and deb repository metadata with install and rollback verification.
 
 These gates apply to the Linux release. A native Windows Server service/backend
 and Windows Server tests are a separate platform track; Windows support is not

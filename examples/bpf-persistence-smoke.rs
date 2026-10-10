@@ -74,7 +74,7 @@ fn main() -> osmanthus_guard::Result<()> {
             ))
         })?;
     metadata
-        .update(&0_u32.to_ne_bytes(), &4_u32.to_ne_bytes(), MapFlags::ANY)
+        .update(&0_u32.to_ne_bytes(), &5_u32.to_ne_bytes(), MapFlags::ANY)
         .map_err(|error| {
             osmanthus_guard::OsmanthusError::InvalidState(format!(
                 "write incompatible test BPF ABI: {error}"
@@ -100,7 +100,7 @@ fn main() -> osmanthus_guard::Result<()> {
         }
     }
     metadata
-        .update(&0_u32.to_ne_bytes(), &3_u32.to_ne_bytes(), MapFlags::ANY)
+        .update(&0_u32.to_ne_bytes(), &4_u32.to_ne_bytes(), MapFlags::ANY)
         .map_err(|error| {
             osmanthus_guard::OsmanthusError::InvalidState(format!("restore test BPF ABI: {error}"))
         })?;

@@ -2,9 +2,7 @@ use std::io::{BufRead, Write};
 
 use serde::{Deserialize, Serialize};
 
-use crate::enforcement::{
-    EnforcementDecision, MaintenanceLease, ProtectedAction, ResourceOperation,
-};
+use crate::enforcement::{MaintenanceLease, ProtectedAction, ResourceOperation};
 use crate::{OsmanthusError, Result};
 
 pub const PROTOCOL_VERSION: u32 = 1;
@@ -87,14 +85,6 @@ impl Request {
                 }
                 Ok(())
             }
-            RequestBody::Evaluate {
-                session_id,
-                operation,
-            } => {
-                validate_session_id(session_id)?;
-                ResourceOperation::new(operation.action, &operation.target)?;
-                Ok(())
-            }
             RequestBody::MaintenanceGrant {
                 scope,
                 actions,
@@ -131,10 +121,6 @@ impl Request {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum RequestBody {
     Health,
-    Evaluate {
-        session_id: String,
-        operation: ResourceOperation,
-    },
     MaintenanceGrant {
         scope: std::path::PathBuf,
         actions: Vec<ProtectedAction>,
@@ -188,9 +174,6 @@ pub enum ResponseBody {
     Health {
         daemon_version: String,
         backend: BackendState,
-    },
-    Decision {
-        decision: EnforcementDecision,
     },
     MaintenanceGranted {
         lease_id: String,
@@ -328,15 +311,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bounded_json_line_protocol_round_trips_an_evaluation() {
+    fn bounded_json_line_protocol_round_trips_a_health_request() {
         let request = Request {
             protocol_version: PROTOCOL_VERSION,
             request_id: "request-1".to_owned(),
-            body: RequestBody::Evaluate {
-                session_id: "ssh.1000.42".to_owned(),
-                operation: ResourceOperation::new(ProtectedAction::Delete, "/var/www/releases/old")
-                    .unwrap(),
-            },
+            body: RequestBody::Health,
         };
         let mut encoded = serde_json::to_vec(&request).unwrap();
         encoded.push(b'\n');

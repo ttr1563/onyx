@@ -25,8 +25,10 @@ fn main() -> osmanthus_guard::Result<()> {
     }
     let temporary = TempDir::new_in("/var/tmp")?;
     let protected = temporary.path().join("protected");
+    let topology_protected = temporary.path().join("topology-protected");
     let outside = temporary.path().join("outside");
     fs::create_dir_all(&protected)?;
+    fs::create_dir_all(&topology_protected)?;
     fs::create_dir_all(&outside)?;
     let blocked_mount = protected.join("blocked-mount");
     fs::create_dir(&blocked_mount)?;
@@ -40,15 +42,27 @@ fn main() -> osmanthus_guard::Result<()> {
     .into_iter()
     .collect::<BTreeSet<_>>();
     let root = ProtectedRoot::new(&protected, actions.clone())?;
+    let topology_root = ProtectedRoot::new(
+        &topology_protected,
+        BTreeSet::from([ProtectedAction::Delete]),
+    )?;
     let monitored_uid = std::env::var("SUDO_UID")
         .ok()
         .and_then(|value| value.parse().ok())
         .filter(|uid| *uid != 0)
         .unwrap_or(65_534);
-    let policy = EnforcementPolicy::from_parts(vec![root], BTreeSet::from([monitored_uid]))?;
+    let policy =
+        EnforcementPolicy::from_parts(vec![root, topology_root], BTreeSet::from([monitored_uid]))?;
 
     let blocked_delete = protected.join("blocked-delete");
     let blocked_truncate = protected.join("blocked-truncate");
+    let blocked_direct_truncate = protected.join("blocked-direct-truncate");
+    let blocked_link_source = protected.join("blocked-link-source");
+    let protected_marker = protected.join("protected-marker");
+    let outside_link_source = outside.join("outside-link-source");
+    let imported_link_source = outside.join("imported-link-source");
+    let imported_link_alias = outside.join("imported-link-alias");
+    let ordinary_rename_source = outside.join("ordinary-rename-source");
     let blocked_rename = protected.join("blocked-rename");
     let blocked_chmod = protected.join("blocked-chmod");
     let blocked_write = protected.join("blocked-write");
@@ -75,6 +89,9 @@ fn main() -> osmanthus_guard::Result<()> {
     for path in [
         &blocked_delete,
         &blocked_truncate,
+        &blocked_direct_truncate,
+        &blocked_link_source,
+        &protected_marker,
         &blocked_rename,
         &blocked_chmod,
         &blocked_write,
@@ -83,6 +100,10 @@ fn main() -> osmanthus_guard::Result<()> {
         fs::write(path, b"kept")?;
     }
     fs::write(&outside_file, b"delete")?;
+    fs::write(&outside_link_source, b"outside")?;
+    fs::write(&imported_link_source, b"linked")?;
+    fs::hard_link(&imported_link_source, &imported_link_alias)?;
+    fs::write(&ordinary_rename_source, b"ordinary")?;
     fs::write(&deep_outside_file, b"delete")?;
     fs::write(&deep_protected_file, b"kept")?;
     fs::write(&excessive_depth_file, b"kept")?;
@@ -127,6 +148,66 @@ fn main() -> osmanthus_guard::Result<()> {
     if fs::read(&blocked_truncate)? != b"kept" {
         return Err(osmanthus_guard::OsmanthusError::InvalidState(
             "blocked truncate changed the target".to_owned(),
+        ));
+    }
+
+    let direct_truncate = OpenOptions::new()
+        .write(true)
+        .open(&blocked_direct_truncate)?;
+    expect_permission_denied(direct_truncate.set_len(0), "direct truncate")?;
+    if fs::read(&blocked_direct_truncate)? != b"kept" {
+        return Err(osmanthus_guard::OsmanthusError::InvalidState(
+            "blocked direct truncate changed the target".to_owned(),
+        ));
+    }
+
+    expect_permission_denied(
+        fs::hard_link(&blocked_link_source, outside.join("blocked-link-alias")),
+        "hard link from a protected root",
+    )?;
+    expect_permission_denied(
+        fs::hard_link(&outside_link_source, protected.join("blocked-link-import")),
+        "hard link into a protected root",
+    )?;
+    expect_permission_denied(
+        fs::rename(
+            &imported_link_alias,
+            topology_protected.join("blocked-existing-link-import"),
+        ),
+        "rename an existing hard link into a protected root",
+    )?;
+    fs::rename(
+        &ordinary_rename_source,
+        topology_protected.join("allowed-ordinary-rename"),
+    )?;
+
+    let exchange_source = outside.join("exchange-source");
+    fs::create_dir(&exchange_source)?;
+    fs::write(exchange_source.join("outside-marker"), b"outside")?;
+    let exchange_source_c =
+        std::ffi::CString::new(exchange_source.as_os_str().as_encoded_bytes()).unwrap();
+    let protected_c = std::ffi::CString::new(protected.as_os_str().as_encoded_bytes()).unwrap();
+    let exchange_result = unsafe {
+        libc::syscall(
+            libc::SYS_renameat2,
+            libc::AT_FDCWD,
+            exchange_source_c.as_ptr(),
+            libc::AT_FDCWD,
+            protected_c.as_ptr(),
+            2_u32,
+        )
+    };
+    if exchange_result == 0 {
+        return Err(osmanthus_guard::OsmanthusError::InvalidState(
+            "RENAME_EXCHANGE replaced a protected root".to_owned(),
+        ));
+    }
+    if std::io::Error::last_os_error().kind() != std::io::ErrorKind::PermissionDenied {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if !protected_marker.exists() || !exchange_source.join("outside-marker").exists() {
+        return Err(osmanthus_guard::OsmanthusError::InvalidState(
+            "blocked RENAME_EXCHANGE changed a target".to_owned(),
         ));
     }
 

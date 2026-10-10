@@ -135,7 +135,16 @@ impl PersistentLinuxBpfBackend {
                 }
             }
         }
-        sync_map(&self.protected_boundaries, &desired_boundaries)?;
+        for key in &desired_boundaries {
+            self.protected_boundaries
+                .update(key, &ENABLED, MapFlags::ANY)
+                .map_err(bpf_error(
+                    "install protected boundary in persistent BPF map",
+                ))?;
+        }
+        for root in &policy.protected_roots {
+            validate_no_hard_links(root.path())?;
+        }
         for key in &desired {
             self.protected_roots
                 .update(key, &ENABLED, MapFlags::ANY)
@@ -146,6 +155,13 @@ impl PersistentLinuxBpfBackend {
                 self.protected_roots
                     .delete(&key)
                     .map_err(bpf_error("remove stale protected-root BPF entry"))?;
+            }
+        }
+        for key in self.protected_boundaries.keys().collect::<Vec<_>>() {
+            if !desired_boundaries.contains(key.as_slice()) {
+                self.protected_boundaries
+                    .delete(&key)
+                    .map_err(bpf_error("remove stale protected-boundary BPF entry"))?;
             }
         }
         set_write_protection_feature(
@@ -337,28 +353,36 @@ fn upgrade_pinned_programs() -> Result<()> {
             NEXT_LINK_PATHS[0],
         )?;
         pin_link(&mut skeleton.links.osmanthus_path_rmdir, NEXT_LINK_PATHS[1])?;
+        pin_link(&mut skeleton.links.osmanthus_path_link, NEXT_LINK_PATHS[2])?;
         pin_link(
             &mut skeleton.links.osmanthus_path_rename,
-            NEXT_LINK_PATHS[2],
+            NEXT_LINK_PATHS[3],
         )?;
-        pin_link(&mut skeleton.links.osmanthus_file_open, NEXT_LINK_PATHS[3])?;
         pin_link(
-            &mut skeleton.links.osmanthus_file_permission,
+            &mut skeleton.links.osmanthus_path_truncate,
             NEXT_LINK_PATHS[4],
         )?;
-        pin_link(&mut skeleton.links.osmanthus_mmap_file, NEXT_LINK_PATHS[5])?;
+        pin_link(&mut skeleton.links.osmanthus_file_open, NEXT_LINK_PATHS[5])?;
         pin_link(
-            &mut skeleton.links.osmanthus_file_mprotect,
+            &mut skeleton.links.osmanthus_file_permission,
             NEXT_LINK_PATHS[6],
         )?;
-        pin_link(&mut skeleton.links.osmanthus_path_chmod, NEXT_LINK_PATHS[7])?;
-        pin_link(&mut skeleton.links.osmanthus_path_chown, NEXT_LINK_PATHS[8])?;
-        pin_link(&mut skeleton.links.osmanthus_execve, NEXT_LINK_PATHS[9])?;
-        pin_link(&mut skeleton.links.osmanthus_execveat, NEXT_LINK_PATHS[10])?;
-        pin_link(&mut skeleton.links.osmanthus_sb_mount, NEXT_LINK_PATHS[11])?;
+        pin_link(&mut skeleton.links.osmanthus_mmap_file, NEXT_LINK_PATHS[7])?;
+        pin_link(
+            &mut skeleton.links.osmanthus_file_mprotect,
+            NEXT_LINK_PATHS[8],
+        )?;
+        pin_link(&mut skeleton.links.osmanthus_path_chmod, NEXT_LINK_PATHS[9])?;
+        pin_link(
+            &mut skeleton.links.osmanthus_path_chown,
+            NEXT_LINK_PATHS[10],
+        )?;
+        pin_link(&mut skeleton.links.osmanthus_execve, NEXT_LINK_PATHS[11])?;
+        pin_link(&mut skeleton.links.osmanthus_execveat, NEXT_LINK_PATHS[12])?;
+        pin_link(&mut skeleton.links.osmanthus_sb_mount, NEXT_LINK_PATHS[13])?;
         pin_link(
             &mut skeleton.links.osmanthus_move_mount,
-            NEXT_LINK_PATHS[12],
+            NEXT_LINK_PATHS[14],
         )?;
         Ok(())
     })();
@@ -412,7 +436,7 @@ impl crate::daemon::EnforcementBackend for PersistentLinuxBpfBackend {
 use skeleton::{OsmanthusLsmSkel, OsmanthusLsmSkelBuilder};
 
 const ENABLED: [u8; 1] = [1];
-const BPF_ABI_VERSION: u32 = 3;
+const BPF_ABI_VERSION: u32 = 4;
 const LEGACY_PIN_DIRECTORY: &str = "/sys/fs/bpf/onyx";
 pub const PIN_DIRECTORY: &str = "/sys/fs/bpf/osmanthus";
 const METADATA_MAP: &str = "/sys/fs/bpf/osmanthus/metadata";
@@ -421,10 +445,12 @@ const PROTECTED_BOUNDARIES_MAP: &str = "/sys/fs/bpf/osmanthus/protected_boundari
 const MAINTENANCE_LEASES_MAP: &str = "/sys/fs/bpf/osmanthus/maintenance_leases";
 const MONITORED_UIDS_MAP: &str = "/sys/fs/bpf/osmanthus/monitored_uids";
 const EVENTS_MAP: &str = "/sys/fs/bpf/osmanthus/events";
-const LINK_PATHS: [&str; 13] = [
+const LINK_PATHS: [&str; 15] = [
     "/sys/fs/bpf/osmanthus/path_unlink",
     "/sys/fs/bpf/osmanthus/path_rmdir",
+    "/sys/fs/bpf/osmanthus/path_link",
     "/sys/fs/bpf/osmanthus/path_rename",
+    "/sys/fs/bpf/osmanthus/path_truncate",
     "/sys/fs/bpf/osmanthus/file_open",
     "/sys/fs/bpf/osmanthus/file_permission",
     "/sys/fs/bpf/osmanthus/mmap_file",
@@ -436,10 +462,12 @@ const LINK_PATHS: [&str; 13] = [
     "/sys/fs/bpf/osmanthus/sb_mount",
     "/sys/fs/bpf/osmanthus/move_mount",
 ];
-const NEXT_LINK_PATHS: [&str; 13] = [
+const NEXT_LINK_PATHS: [&str; 15] = [
     "/sys/fs/bpf/osmanthus/next_path_unlink",
     "/sys/fs/bpf/osmanthus/next_path_rmdir",
+    "/sys/fs/bpf/osmanthus/next_path_link",
     "/sys/fs/bpf/osmanthus/next_path_rename",
+    "/sys/fs/bpf/osmanthus/next_path_truncate",
     "/sys/fs/bpf/osmanthus/next_file_open",
     "/sys/fs/bpf/osmanthus/next_file_permission",
     "/sys/fs/bpf/osmanthus/next_mmap_file",
@@ -460,12 +488,19 @@ pub enum KernelEventKind {
     ResourceBlocked,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KernelBoundaryOperation {
+    Mount,
+    HardLink,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KernelEvent {
     pub monotonic_nanoseconds: u64,
     pub inode: u64,
     pub kind: KernelEventKind,
     pub action: Option<ProtectedAction>,
+    pub boundary_operation: Option<KernelBoundaryOperation>,
     pub device: u32,
     pub pid: u32,
     pub tgid: u32,
@@ -493,21 +528,27 @@ pub fn parse_kernel_event(bytes: &[u8]) -> Result<KernelEvent> {
             )));
         }
     };
-    let action = match action_number {
-        0 => None,
-        1 => Some(ProtectedAction::Delete),
-        2 => Some(ProtectedAction::Rename),
-        3 => Some(ProtectedAction::Truncate),
-        4 => Some(ProtectedAction::ChangePermissions),
-        5 => Some(ProtectedAction::Write),
-        6 if kind == KernelEventKind::ResourceBlocked => None,
+    let (action, boundary_operation) = match action_number {
+        0 => (None, None),
+        1 => (Some(ProtectedAction::Delete), None),
+        2 => (Some(ProtectedAction::Rename), None),
+        3 => (Some(ProtectedAction::Truncate), None),
+        4 => (Some(ProtectedAction::ChangePermissions), None),
+        5 => (Some(ProtectedAction::Write), None),
+        6 if kind == KernelEventKind::ResourceBlocked => {
+            (None, Some(KernelBoundaryOperation::Mount))
+        }
+        7 if kind == KernelEventKind::ResourceBlocked => {
+            (None, Some(KernelBoundaryOperation::HardLink))
+        }
         _ => {
             return Err(OsmanthusError::InvalidState(format!(
                 "kernel event has unknown action: {action_number}"
             )));
         }
     };
-    if kind == KernelEventKind::ResourceBlocked && action.is_none() && action_number != 6 {
+    if kind == KernelEventKind::ResourceBlocked && action.is_none() && boundary_operation.is_none()
+    {
         return Err(OsmanthusError::InvalidState(
             "blocked kernel event has no operation class".to_owned(),
         ));
@@ -517,6 +558,7 @@ pub fn parse_kernel_event(bytes: &[u8]) -> Result<KernelEvent> {
         inode: read_u64(bytes, 8),
         kind,
         action,
+        boundary_operation,
         device: read_u32(bytes, 24),
         pid: read_u32(bytes, 28),
         tgid: read_u32(bytes, 32),
@@ -562,6 +604,9 @@ impl<'object> LinuxBpfSession<'object> {
 
     pub fn replace_policy(&mut self, policy: &EnforcementPolicy) -> Result<()> {
         policy.validate()?;
+        for root in &policy.protected_roots {
+            validate_no_hard_links(root.path())?;
+        }
         clear_map(&self.skeleton.maps.osmanthus_protected_roots)?;
         clear_map(&self.skeleton.maps.osmanthus_protected_boundaries)?;
         for root in &policy.protected_roots {
@@ -656,28 +701,36 @@ impl<'object> LinuxBpfSession<'object> {
             LINK_PATHS[0],
         )?;
         pin_link(&mut self.skeleton.links.osmanthus_path_rmdir, LINK_PATHS[1])?;
+        pin_link(&mut self.skeleton.links.osmanthus_path_link, LINK_PATHS[2])?;
         pin_link(
             &mut self.skeleton.links.osmanthus_path_rename,
-            LINK_PATHS[2],
+            LINK_PATHS[3],
         )?;
-        pin_link(&mut self.skeleton.links.osmanthus_file_open, LINK_PATHS[3])?;
         pin_link(
-            &mut self.skeleton.links.osmanthus_file_permission,
+            &mut self.skeleton.links.osmanthus_path_truncate,
             LINK_PATHS[4],
         )?;
-        pin_link(&mut self.skeleton.links.osmanthus_mmap_file, LINK_PATHS[5])?;
+        pin_link(&mut self.skeleton.links.osmanthus_file_open, LINK_PATHS[5])?;
         pin_link(
-            &mut self.skeleton.links.osmanthus_file_mprotect,
+            &mut self.skeleton.links.osmanthus_file_permission,
             LINK_PATHS[6],
         )?;
-        pin_link(&mut self.skeleton.links.osmanthus_path_chmod, LINK_PATHS[7])?;
-        pin_link(&mut self.skeleton.links.osmanthus_path_chown, LINK_PATHS[8])?;
-        pin_link(&mut self.skeleton.links.osmanthus_execve, LINK_PATHS[9])?;
-        pin_link(&mut self.skeleton.links.osmanthus_execveat, LINK_PATHS[10])?;
-        pin_link(&mut self.skeleton.links.osmanthus_sb_mount, LINK_PATHS[11])?;
+        pin_link(&mut self.skeleton.links.osmanthus_mmap_file, LINK_PATHS[7])?;
+        pin_link(
+            &mut self.skeleton.links.osmanthus_file_mprotect,
+            LINK_PATHS[8],
+        )?;
+        pin_link(&mut self.skeleton.links.osmanthus_path_chmod, LINK_PATHS[9])?;
+        pin_link(
+            &mut self.skeleton.links.osmanthus_path_chown,
+            LINK_PATHS[10],
+        )?;
+        pin_link(&mut self.skeleton.links.osmanthus_execve, LINK_PATHS[11])?;
+        pin_link(&mut self.skeleton.links.osmanthus_execveat, LINK_PATHS[12])?;
+        pin_link(&mut self.skeleton.links.osmanthus_sb_mount, LINK_PATHS[13])?;
         pin_link(
             &mut self.skeleton.links.osmanthus_move_mount,
-            LINK_PATHS[12],
+            LINK_PATHS[14],
         )?;
         Ok(())
     }
@@ -752,7 +805,67 @@ fn resource_identity(path: &Path) -> Result<ResourceIdentity> {
 }
 
 pub fn validate_protected_root_path(path: &Path) -> Result<()> {
-    resource_identity(path).map(|_| ())
+    resource_identity(path)?;
+    validate_no_hard_links(path)
+}
+
+const MAX_PROTECTED_ROOT_ENTRIES: usize = 1_000_000;
+
+fn validate_no_hard_links(root: &Path) -> Result<()> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut visited_directories = std::collections::BTreeSet::new();
+    let mut visited_entries = 0_usize;
+
+    while let Some(directory) = pending.pop() {
+        let metadata = fs::symlink_metadata(&directory).map_err(|error| {
+            OsmanthusError::InvalidState(format!(
+                "inspect protected resource for hard links: {}: {error}",
+                directory.display()
+            ))
+        })?;
+        if !metadata.is_dir() {
+            continue;
+        }
+        if !visited_directories.insert((metadata.dev(), metadata.ino())) {
+            continue;
+        }
+        for entry in fs::read_dir(&directory).map_err(|error| {
+            OsmanthusError::InvalidState(format!(
+                "enumerate protected resource for hard links: {}: {error}",
+                directory.display()
+            ))
+        })? {
+            let entry = entry.map_err(|error| {
+                OsmanthusError::InvalidState(format!(
+                    "enumerate protected resource for hard links: {}: {error}",
+                    directory.display()
+                ))
+            })?;
+            visited_entries = visited_entries.saturating_add(1);
+            if visited_entries > MAX_PROTECTED_ROOT_ENTRIES {
+                return Err(OsmanthusError::InvalidState(format!(
+                    "protected resource contains more than {MAX_PROTECTED_ROOT_ENTRIES} entries: {}",
+                    root.display()
+                )));
+            }
+            let path = entry.path();
+            let metadata = fs::symlink_metadata(&path).map_err(|error| {
+                OsmanthusError::InvalidState(format!(
+                    "inspect protected resource entry: {}: {error}",
+                    path.display()
+                ))
+            })?;
+            if metadata.is_dir() {
+                pending.push(path);
+            } else if metadata.nlink() > 1 {
+                return Err(OsmanthusError::InvalidState(format!(
+                    "protected resource contains a hard-linked entry: {}",
+                    path.display()
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn resource_identities(root: &Path) -> Result<Vec<ResourceIdentity>> {
@@ -957,20 +1070,6 @@ fn clear_map(map: &impl MapCore) -> Result<()> {
     Ok(())
 }
 
-fn sync_map(map: &impl MapCore, desired: &std::collections::BTreeSet<[u8; 16]>) -> Result<()> {
-    for key in desired {
-        map.update(key, &ENABLED, MapFlags::ANY)
-            .map_err(bpf_error("update persistent BPF map"))?;
-    }
-    for key in map.keys().collect::<Vec<_>>() {
-        if !desired.contains(key.as_slice()) {
-            map.delete(&key)
-                .map_err(bpf_error("remove stale persistent BPF entry"))?;
-        }
-    }
-    Ok(())
-}
-
 fn read_u32(bytes: &[u8], offset: usize) -> u32 {
     u32::from_ne_bytes(
         bytes[offset..offset + 4]
@@ -1052,6 +1151,24 @@ mod tests {
         let event = parse_kernel_event(&bytes).unwrap();
         assert_eq!(event.kind, KernelEventKind::ResourceBlocked);
         assert_eq!(event.action, None);
+        assert_eq!(
+            event.boundary_operation,
+            Some(KernelBoundaryOperation::Mount)
+        );
+    }
+
+    #[test]
+    fn parses_hard_link_event_as_a_resource_denial() {
+        let mut bytes = [0_u8; KERNEL_EVENT_BYTES];
+        bytes[16..20].copy_from_slice(&2_u32.to_ne_bytes());
+        bytes[20..24].copy_from_slice(&7_u32.to_ne_bytes());
+        let event = parse_kernel_event(&bytes).unwrap();
+        assert_eq!(event.kind, KernelEventKind::ResourceBlocked);
+        assert_eq!(event.action, None);
+        assert_eq!(
+            event.boundary_operation,
+            Some(KernelBoundaryOperation::HardLink)
+        );
     }
 
     #[test]
@@ -1072,5 +1189,16 @@ mod tests {
         let error = validate_protected_root_path(&missing).unwrap_err();
         assert!(error.to_string().contains(&missing.display().to_string()));
         assert!(error.to_string().contains("must exist and be accessible"));
+    }
+
+    #[test]
+    fn protected_root_preflight_rejects_existing_hard_links() {
+        let temporary = tempfile::tempdir().unwrap();
+        let original = temporary.path().join("original");
+        let alias = temporary.path().join("alias");
+        fs::write(&original, b"data").unwrap();
+        fs::hard_link(&original, &alias).unwrap();
+        let error = validate_protected_root_path(temporary.path()).unwrap_err();
+        assert!(error.to_string().contains("hard-linked entry"));
     }
 }

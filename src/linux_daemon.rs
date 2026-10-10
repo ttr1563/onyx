@@ -1,10 +1,12 @@
+use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufReader, Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Component, Path, PathBuf};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use libbpf_rs::{MapHandle, RingBufferBuilder};
@@ -16,7 +18,8 @@ use crate::daemon::{
 };
 use crate::enforcement::EnforcementPolicy;
 use crate::linux_bpf::{
-    KernelEvent, KernelEventKind, PersistentLinuxBpfBackend, parse_kernel_event,
+    KernelBoundaryOperation, KernelEvent, KernelEventKind, PersistentLinuxBpfBackend,
+    parse_kernel_event,
 };
 use crate::protocol::{self, PROTOCOL_VERSION, Response, ResponseBody};
 use crate::{OsmanthusError, Result, system_policy};
@@ -25,6 +28,61 @@ pub const RUNTIME_DIRECTORY: &str = "/run/osmanthus";
 pub const SOCKET_PATH: &str = "/run/osmanthus/osmanthusd.sock";
 const LOCK_PATH: &str = "/run/osmanthus/osmanthusd.lock";
 const CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(2);
+const MAX_CLIENT_CONNECTIONS: usize = 64;
+const MAX_CONNECTIONS_PER_UID: usize = 4;
+
+struct PreparedRequest {
+    peer: PeerIdentity,
+    request: protocol::Request,
+    response_sender: SyncSender<Response>,
+}
+
+#[derive(Default)]
+struct ConnectionCounts {
+    total: usize,
+    by_uid: BTreeMap<u32, usize>,
+}
+
+#[derive(Clone, Default)]
+struct ConnectionLimiter {
+    counts: Arc<Mutex<ConnectionCounts>>,
+}
+
+struct ConnectionPermit {
+    uid: u32,
+    counts: Arc<Mutex<ConnectionCounts>>,
+}
+
+impl ConnectionLimiter {
+    fn acquire(&self, uid: u32) -> Option<ConnectionPermit> {
+        let mut counts = self.counts.lock().ok()?;
+        let uid_count = counts.by_uid.get(&uid).copied().unwrap_or_default();
+        if counts.total >= MAX_CLIENT_CONNECTIONS || uid_count >= MAX_CONNECTIONS_PER_UID {
+            return None;
+        }
+        counts.total += 1;
+        counts.by_uid.insert(uid, uid_count + 1);
+        Some(ConnectionPermit {
+            uid,
+            counts: Arc::clone(&self.counts),
+        })
+    }
+}
+
+impl Drop for ConnectionPermit {
+    fn drop(&mut self) {
+        let Ok(mut counts) = self.counts.lock() else {
+            return;
+        };
+        counts.total = counts.total.saturating_sub(1);
+        if let Some(value) = counts.by_uid.get_mut(&self.uid) {
+            *value = value.saturating_sub(1);
+            if *value == 0 {
+                counts.by_uid.remove(&self.uid);
+            }
+        }
+    }
+}
 
 pub fn run() -> Result<()> {
     system_policy::require_root()?;
@@ -43,6 +101,8 @@ pub fn run() -> Result<()> {
     let mut core =
         DaemonCore::new_with_backend(&policy, backend, SystemAdministratorAuthenticator, audit)?;
     let listener = create_listener()?;
+    let limiter = ConnectionLimiter::default();
+    let (request_sender, request_receiver) = mpsc::sync_channel(MAX_CLIENT_CONNECTIONS);
 
     loop {
         if let Ok(message) = audit_failures.try_recv() {
@@ -50,17 +110,37 @@ pub fn run() -> Result<()> {
                 "kernel audit consumer stopped: {message}"
             )));
         }
+        while let Ok(prepared) = request_receiver.try_recv() {
+            process_request(&mut core, prepared);
+            if core.shutdown_requested() {
+                return Ok(());
+            }
+        }
         match listener.accept() {
-            Ok((mut stream, _address)) => {
-                if let Err(error) = handle_connection(&mut core, &mut stream) {
-                    eprintln!("osmanthusd: client request failed: {error}");
-                }
-                if core.shutdown_requested() {
-                    return Ok(());
-                }
+            Ok((stream, _address)) => {
+                let peer = match peer_identity(&stream) {
+                    Ok(peer) => peer,
+                    Err(error) => {
+                        eprintln!("osmanthusd: reject client without a verified identity: {error}");
+                        continue;
+                    }
+                };
+                let Some(permit) = limiter.acquire(peer.uid) else {
+                    eprintln!(
+                        "osmanthusd: reject client because the connection limit was reached for UID {}",
+                        peer.uid
+                    );
+                    continue;
+                };
+                let sender = request_sender.clone();
+                std::thread::spawn(move || {
+                    if let Err(error) = read_and_respond(stream, peer, sender, permit) {
+                        eprintln!("osmanthusd: client request failed: {error}");
+                    }
+                });
             }
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(50));
+                std::thread::sleep(Duration::from_millis(10));
             }
             Err(error) => return Err(error.into()),
         }
@@ -128,30 +208,53 @@ fn kernel_audit_record(event: &KernelEvent) -> DaemonAuditRecord {
             peer_cgroup_id: None,
             session_id: Some(process),
             target: Some(format!("{}:{}", event.device, event.inode)),
-            operation: Some(event.action.map_or("mount_boundary".to_owned(), |action| {
-                format!("{action:?}").to_ascii_lowercase()
-            })),
+            operation: Some(event.action.map_or_else(
+                || match event.boundary_operation {
+                    Some(KernelBoundaryOperation::Mount) => "mount_boundary".to_owned(),
+                    Some(KernelBoundaryOperation::HardLink) => "hard_link".to_owned(),
+                    None => "unknown".to_owned(),
+                },
+                |action| format!("{action:?}").to_ascii_lowercase(),
+            )),
             decision: Some("blocked".to_owned()),
             lease_id: None,
         },
     }
 }
 
-fn handle_connection<B: crate::daemon::EnforcementBackend>(
-    core: &mut DaemonCore<SystemAdministratorAuthenticator, JsonlDaemonAudit, B>,
-    stream: &mut UnixStream,
+fn read_and_respond(
+    mut stream: UnixStream,
+    peer: PeerIdentity,
+    sender: SyncSender<PreparedRequest>,
+    _permit: ConnectionPermit,
 ) -> Result<()> {
     stream.set_read_timeout(Some(CLIENT_IO_TIMEOUT))?;
     stream.set_write_timeout(Some(CLIENT_IO_TIMEOUT))?;
-    let peer = peer_identity(stream)?;
-    let reader_stream = stream.try_clone()?;
-    let mut reader = BufReader::new(reader_stream);
+    let mut reader = BufReader::new(stream.try_clone()?);
     let Some(request) = protocol::read_request(&mut reader)? else {
         return Ok(());
     };
-    let request_id = request.request_id.clone();
+    let (response_sender, response_receiver) = mpsc::sync_channel(0);
+    sender
+        .send(PreparedRequest {
+            peer,
+            request,
+            response_sender,
+        })
+        .map_err(|_| OsmanthusError::InvalidState("daemon request loop stopped".to_owned()))?;
+    let response = response_receiver
+        .recv()
+        .map_err(|_| OsmanthusError::InvalidState("daemon request loop stopped".to_owned()))?;
+    protocol::write_response(&mut stream, &response)
+}
+
+fn process_request<B: crate::daemon::EnforcementBackend>(
+    core: &mut DaemonCore<SystemAdministratorAuthenticator, JsonlDaemonAudit, B>,
+    prepared: PreparedRequest,
+) {
+    let request_id = prepared.request.request_id.clone();
     let now = OffsetDateTime::now_utc().unix_timestamp();
-    let response = match core.handle(peer, request, now) {
+    let response = match core.handle(prepared.peer, prepared.request, now) {
         Ok(response) => response,
         Err(error) => Response {
             protocol_version: PROTOCOL_VERSION,
@@ -162,7 +265,7 @@ fn handle_connection<B: crate::daemon::EnforcementBackend>(
             },
         },
     };
-    protocol::write_response(stream, &response)
+    let _ = prepared.response_sender.send(response);
 }
 
 fn create_listener() -> Result<UnixListener> {
@@ -350,5 +453,17 @@ mod tests {
     #[test]
     fn resolves_the_current_kernel_cgroup_identity() {
         assert_ne!(current_cgroup_id().unwrap(), 0);
+    }
+
+    #[test]
+    fn connection_limiter_is_bounded_per_uid_and_releases_capacity() {
+        let limiter = ConnectionLimiter::default();
+        let permits = (0..MAX_CONNECTIONS_PER_UID)
+            .map(|_| limiter.acquire(1000).unwrap())
+            .collect::<Vec<_>>();
+        assert!(limiter.acquire(1000).is_none());
+        assert!(limiter.acquire(1001).is_some());
+        drop(permits);
+        assert!(limiter.acquire(1000).is_some());
     }
 }
