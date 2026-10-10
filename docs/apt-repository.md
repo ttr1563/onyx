@@ -1,4 +1,9 @@
-# Onyx APT repository runbook
+# Legacy Onyx APT repository runbook
+
+> Historical reference only. This tree describes the retired Onyx v0.1.3
+> wrapper repository and its Onyx signing identity. It must not be used to
+> publish Osmanthus. The first Osmanthus repository bootstrap requires a
+> separately approved version, signing identity, and release runbook.
 
 This document covers the public Debian/Ubuntu repository at
 `https://ttr1563.github.io/onyx/apt/`. The repository is only a distribution
@@ -37,8 +42,9 @@ Build on an `x86_64` host with Rust 1.91 or later and GNU `ar`, `tar`, and
 scripts/build-deb.sh 0.1.3 docs/apt/pool/main/o/onyx
 ```
 
-The package contains the Onyx executable, MIT license, README, operations
-runbook, and root logrotate example. `/var/lib/onyx` and `/etc/onyx` are
+The package contains the Onyx executables and daemon, MIT license, README,
+operations and SSM runbooks, the SSM Session document template, and root
+logrotate configuration. `/var/lib/onyx` and `/etc/onyx` are
 deliberately not owned or removed by the package, including during purge,
 because they can contain enrollment state, policy, and audit evidence.
 

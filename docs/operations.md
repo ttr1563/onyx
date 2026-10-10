@@ -1,118 +1,232 @@
-# Onyx operations runbook
+# Operations runbook
 
-This runbook covers the explicit-wrapper architecture in Onyx v0.1. It does not turn Onyx into host-wide enforcement. Commands launched without `onyx run --` remain outside the protection boundary.
+This runbook describes the enforced Linux branch. It is not a production
+release procedure until every gate in the README is closed.
 
-## Before installation
+## Prerequisites
 
-1. Choose a dedicated, least-privileged operating-system identity for protected automation.
-2. Confirm that the host clock is synchronized. TOTP approval depends on accurate time.
-3. Decide who controls the execution authenticator and the separate policy-administrator authenticator.
-4. Decide how long local audit records must be retained and whether an existing log collector will forward them.
-5. Keep a separate administrative access path for recovery. Onyx does not provide an unauthenticated reset command.
+- Native Linux x86-64 or ARM64 with BTF, BPF LSM enabled and active, and the
+  `bpf_loop` helper. Each architecture must pass its own package integration
+  gate before release.
+- systemd and a mounted bpffs at `/sys/fs/bpf`.
+- root access for installation and policy changes.
+- a separate RFC 6238 authenticator controlled by the policy administrator.
+- a tested console/recovery path before changing any login entry point.
 
-The identity running Onyx owns its execution state. The system policy is separately root-owned, but the wrapper still does not contain a fully compromised state owner or root.
+Confirm the kernel capabilities before installation:
 
-## Initial deployment
-
-Install the binary, then initialize Onyx once as the identity that will invoke it:
-
-```console
-onyx init --account production-web-01
-sudo onyx policy init --account production-policy-admin
-onyx status
-onyx check -- rm -rf /example
-onyx run -- /usr/bin/true
-onyx logs --limit 10
+```bash
+test -r /sys/kernel/btf/vmlinux
+grep -qw bpf /sys/kernel/security/lsm
+mountpoint /sys/fs/bpf
+sudo bpftool feature probe kernel | grep -A200 'program type lsm' | grep -w bpf_loop
 ```
 
-Verify all of the following before putting Onyx in an automation path:
+## Bootstrap
 
-- the authenticator displays a six-digit code for the enrolled account;
-- `status` reports the expected state directory and account;
-- the destructive example is reported as blocked by `check` and is not executed;
-- the harmless command exits successfully;
-- the audit log contains `initialized`, `allowed`, and `completed` records;
-- state directories have mode `0700` and state files have mode `0600`.
-- `/etc/onyx` is root-owned mode `0755`, its policy and digest are root-owned mode `0444`, and `/etc/onyx/admin` is mode `0700`.
-
-Use different authenticator entries for command execution and policy administration. Verify policy management from an administrative console:
-
-```console
-sudo onyx policy add --id deployment --executable deploy --argument-contains production --reason "production deployment"
-onyx policy list
-sudo onyx policy remove --id deployment
+```bash
+sudo osmanthus policy init --account production-policy-admin
+sudo systemctl enable --now osmanthusd
+osmanthus daemon status
 ```
 
-Both mutations must prompt for the policy-administrator code. Do not grant the protected workload unrestricted `sudo`; the TOTP prompt is an additional condition, not a replacement for operating-system privilege policy.
+The packaged service keeps the policy files read-only while allowing only
+`/etc/osmanthus/admin` inside that tree to be written by the daemon. This is
+required for TOTP replay prevention and lockout state. Do not broaden the
+systemd `ReadWritePaths` entry to all of `/etc/osmanthus`.
 
-Use absolute executable paths in production automation when practical. Onyx binds approval to the exact argument bytes, but executable lookup still follows the invoking process environment when a basename is supplied.
+Initialization prints the TOTP enrollment once. While the current authenticator
+is available, rotate it and issue a new QR/URI with:
 
-## Audit retention
-
-The default audit file is `/var/lib/onyx/audit.jsonl` for root or `$XDG_STATE_HOME/onyx/audit.jsonl` for a regular user. The repository's [`ops/logrotate/onyx`](../ops/logrotate/onyx) example is for a root-owned installation.
-
-Before installing that example, review its path, owner, `10M` rotation threshold, and seven-generation retention. Validate a copied configuration from an administrative console:
-
-```console
-sudo logrotate --debug /etc/logrotate.d/onyx
+```bash
+sudo osmanthus policy auth rotate
 ```
 
-Do not send TOTP seeds or production audit records to issue trackers. If audit forwarding is required, configure the existing host collector to tail the JSONL file; Onyx itself does not hold cloud credentials or upload logs.
+The previous secret becomes invalid immediately. If every enrolled copy is
+lost, do not edit state by hand; restore `/etc/osmanthus/admin` from a tested,
+root-restricted backup. A packaged break-glass restore test remains a release
+gate.
 
-## Routine checks
+Add one existing canonical directory at a time:
 
-Run these checks after host maintenance and on the operator's normal security-review cadence:
-
-```console
-onyx status
-onyx logs --limit 50
+```bash
+sudo osmanthus policy protect add --path /srv/application \
+  --action delete --action rename --action truncate \
+  --action change-permissions
 ```
 
-Also monitor:
+Use `--action write` only when ordinary application writes must be stopped too.
+This is suitable for immutable release or credential directories, but normally
+not for a live database data directory.
 
-- host clock synchronization;
-- free disk space and log rotation;
-- unexpected `approval_failed`, `execution_failed`, or repeated `blocked` records;
-- owner and mode changes under the state directory;
-- owner, mode, completeness, and digest failures under `/etc/onyx`;
-- automation paths that invoke commands without `onyx run --`.
+Before enrollment, remove or redesign hard-linked non-directory entries below
+the selected root. Osmanthus rejects such a root and always blocks creation of
+hard links into or out of an active protected tree. Maintenance does not relax
+this topology rule.
 
-An audit write failure before execution is fail-closed. A completion-record failure cannot reverse a child command that already finished, so alert on write errors rather than assuming every completed operation has a final record.
+Verify both sides of the boundary with disposable files. Never select `/`, a
+symlink, or an untested production root for the first check.
 
-## Backup and restore
+```bash
+mkdir -p /srv/application/osmanthus-check /tmp/osmanthus-check
+touch /srv/application/osmanthus-check/blocked /tmp/osmanthus-check/allowed
+rm /srv/application/osmanthus-check/blocked   # expected: denied
+rm /tmp/osmanthus-check/allowed               # expected: allowed
+test -e /srv/application/osmanthus-check/blocked
+```
 
-The state directory contains the TOTP seed and must be treated as a secret. If recovery policy requires a backup, encrypt it with an independently controlled key and restrict access more tightly than the protected workload identity.
+## Status and evidence
 
-A restore must preserve each state directory as one consistency unit. Restore while no Onyx command, approval, or policy mutation is running. Preserve the user-state owner and `0700`/`0600` modes. Restore `/etc/onyx` only as root with `0755` on its top directory, `0444` on both policy files, and `0700`/`0600` within `admin`. Do not restore only one of `policy.json` and `policy.sha256`. Run `onyx status`, `onyx policy list`, and a harmless command afterward. Do not merge event or authentication-state files from different backup times.
+```bash
+osmanthus daemon status
+sudo osmanthus policy list
+sudo osmanthus maintenance list
+sudo systemctl status osmanthusd
+sudo tail -n 50 /var/log/osmanthus/audit.jsonl
+sudo find /sys/fs/bpf/osmanthus -maxdepth 1 -printf '%m %u:%g %f\n'
+```
 
-If the backup may have been disclosed, do not restore its TOTP enrollment. Preserve required audit evidence, initialize a new state directory, and enroll a new authenticator instead.
+Daemon failure is not evidence that protection detached: pinned LSM links stay
+active. Conversely, do not infer that shell transcripts are still being written
+while the daemon is down. Treat a daemon/audit outage as an incident and restore
+the service before normal operator work continues.
 
-## Upgrade and rollback
+## Login and AWS SSM onboarding
 
-Before upgrading:
+Registering a real shell changes only the selected non-root account and records
+its original shell for rollback. Both the real shell and `osmanthus-shell` must be
+root-owned executable files that are not group/world writable:
 
-1. record the installed `onyx --version`;
-2. retain the previous trusted binary or package artifact;
-3. create an encrypted state backup if policy requires recovery;
-4. review release notes for state-schema or policy changes;
-5. test `status`, `check`, one harmless execution, and one non-executing blocked check after installation.
+```bash
+getent passwd operator
+sudo osmanthus policy monitor add "$(id -u operator)" --shell /bin/bash
+```
 
-For a binary rollback, reinstall the previous trusted artifact only when its release notes declare the stored schema compatible. Onyx v0.1 rejects unsupported schema versions rather than attempting an implicit downgrade. Restoring older mutable state loses newer audit and approval history and should be an incident-controlled action, not a routine rollback.
+Keep a tested console/recovery path. `policy monitor remove UID` restores the
+recorded shell and refuses to overwrite unexpected concurrent shell changes.
 
-## Lost authenticator or suspected compromise
+AWS SSM starts `sh` by default and can bypass the account login shell. Follow
+[`docs/ssm.md`](ssm.md) to create a custom Session document that executes
+`/usr/bin/osmanthus-shell`, and constrain IAM to that document. Osmanthus does not mutate
+AWS documents or IAM policy during package installation.
 
-If the authenticator is lost, use the separately controlled administrative access path. Preserve audit records required for investigation, replace the state directory with a fresh initialization, and enroll a new authenticator. Pending events and permits from the old state must not be copied forward.
+## Scoped maintenance
 
-If the state owner or root may be compromised:
+Set the normal default and the maximum accepted duration through authenticated
+policy mutation. The hard limit is 24 hours:
 
-1. stop relying on Onyx as an authorization boundary;
-2. isolate the affected workload using the host or infrastructure control plane;
-3. preserve logs according to incident-response policy;
-4. rotate credentials exposed to that identity, including the execution TOTP seed; if root may be compromised, also replace the policy-administrator enrollment and validate the complete policy;
-5. rebuild or recover the host from a trusted point before re-enrollment.
+```bash
+sudo osmanthus policy maintenance set --default 15m --maximum 12h
+```
 
-Local JSONL evidence can be changed or deleted by a sufficiently privileged attacker. Use an existing remote log pipeline when tamper-resistant retention is required.
+Grant the smallest path, operation set, and duration:
 
-## Decommissioning
+```bash
+sudo osmanthus maintenance grant \
+  --path /srv/application/releases/old \
+  --action delete --for 5m
+```
 
-Uninstalling the package does not delete security state or audit evidence. Confirm retention and incident requirements first, then archive or remove only the known Onyx state directory through the organization's administrative process. Record who approved the deletion and which backup, if any, remains recoverable.
+Check the lease, perform the task, then revoke it early:
+
+```bash
+sudo osmanthus maintenance list
+sudo osmanthus maintenance revoke LEASE_ID
+```
+
+For a long migration that needs every configured operation below one path, use
+a scoped pause. The lease is bound to the cgroup that connects to the daemon;
+another login cgroup remains blocked. Because some SSM and service entry points
+can share one cgroup, create a dedicated transient systemd service first:
+
+```bash
+sudo systemd-run --quiet --pty --wait --collect --same-dir \
+  --unit=osmanthus-maintenance-$(date +%s) /bin/bash
+# Run these commands inside that root shell.
+osmanthus maintenance pause --path /srv/application/database --for 8h
+osmanthus maintenance list
+# perform the maintenance
+osmanthus maintenance revoke LEASE_ID
+exit
+```
+
+For an already isolated login cgroup, the direct form is also available:
+
+```bash
+sudo osmanthus maintenance pause --path /srv/application/database --for 8h
+```
+
+A restart clears all leases. A lease does not stop audit collection and does not
+authorize other actions or parent/sibling paths. Osmanthus rejects a new lease when
+its path is equal to, above, or below an active lease and their operation sets
+overlap; revoke the earlier lease or use a non-overlapping operation class.
+Every process already in the bound cgroup receives the lease, so do not treat a
+shared service cgroup as an individual operator session.
+Hard-link creation across a protected boundary remains denied during a lease;
+copy the file explicitly within the approved workflow instead.
+
+An already-existing writable shared memory mapping can continue changing its
+file after `write` protection is activated. Stop or restart writers before
+activating that action, then verify denial with a disposable file. New writes,
+new writable shared mappings, and attempts to make a shared mapping writable
+are denied after activation.
+
+## Policy change failure
+
+The CLI saves a candidate, requests daemon reload, and records an audit entry.
+If reload or audit fails, it restores the prior policy and asks the daemon to
+restore the prior map contents. After any reported rollback error, stop changes
+and compare:
+
+```bash
+sudo sha256sum -c /etc/osmanthus/policy.sha256
+osmanthus daemon status
+sudo osmanthus policy list
+```
+
+Do not directly edit `policy.json`, its digest, or pinned maps.
+
+## Logs
+
+`/var/log/osmanthus/audit.jsonl` is root-only JSONL. The packaged logrotate rule
+rotates it locally. Configure any S3, CloudWatch, SIEM, or backup shipping in a
+separate root-controlled service and alert on write/forwarding failures.
+
+PTY records contain base64-encoded raw terminal input and output. They can
+therefore contain passwords, tokens, or application output typed or printed in
+the session. Limit root access, retention, backups, and forwarding accordingly;
+Osmanthus does not redact arbitrary terminal content.
+
+## Upgrade, rollback, and uninstall
+
+Same-schema program upgrades attach and pin a complete replacement link set
+before promoting it. Startup repairs an interrupted promotion. Package upgrade
+restarts an already-active daemon, which performs this blue-green replacement.
+
+The daemon checks the pinned BPF ABI before program replacement. If it reports an
+incompatible ABI, the old links remain attached. Do not remove individual pins.
+Rollback to the previous package, or schedule a maintenance window to restore
+managed login shells, authenticate `daemon decommission`, install the new
+package, and initialize a fresh attach. Preserve `/etc/osmanthus` and
+`/var/log/osmanthus`; an incompatible policy schema requires a separately
+documented policy conversion before startup.
+
+Before uninstall, restore every managed login shell, then authenticate an
+explicit decommission:
+
+```bash
+sudo osmanthus policy monitor remove UID
+sudo osmanthus daemon decommission
+sudo dnf remove osmanthus        # or: sudo apt-get remove osmanthus
+```
+
+The package uninstall script refuses while `/sys/fs/bpf/osmanthus` exists or an
+account still uses `/usr/bin/osmanthus-shell`. Ordinary `systemctl stop` does not
+remove pinned enforcement. Audit and policy files are retained for recovery.
+
+## Incident boundary
+
+Osmanthus is designed against bypass by a managed non-root shell or automation UID.
+If root, the kernel, or boot trust is suspected compromised, preserve logs,
+isolate the host through the surrounding infrastructure, and rebuild from a
+trusted image. Local TOTP or file permissions cannot contain root.

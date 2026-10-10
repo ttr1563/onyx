@@ -4,67 +4,69 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex,nofollow">
-    <meta name="description" content="OnyxはLinuxサーバー向けの軽量なコマンドガードです。">
-    <link rel="canonical" href="https://ttr1563.github.io/onyx/ja/">
-    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/">
-    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/">
-    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/">
+    <meta name="description" content="OsmanthusはLinuxサーバー向けの軽量なコマンドガードです。">
+    <link rel="canonical" href="https://ttr1563.github.io/osmanthus-shell/ja/">
+    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/osmanthus-shell/">
+    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/osmanthus-shell/ja/">
+    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/osmanthus-shell/">
     <link rel="stylesheet" href="../styles.css">
-    <title>Onyx — Linuxサーバー向けコマンドガード</title>
+    <title>Osmanthus — Linuxサーバー向けコマンドガード</title>
   </head>
   <body>
     <header class="hero">
       <nav>
-        <a class="brand" href="../" aria-label="Onyxホーム">ONYX</a>
+        <a class="brand" href="../" aria-label="Osmanthusホーム">OSMANTHUS</a>
         <div class="nav-links">
           <a href="./install.html">導入</a>
           <a href="../" lang="en" hreflang="en">English</a>
-          <a href="https://github.com/ttr1563/onyx">GitHub</a>
+          <a href="https://github.com/ttr1563/osmanthus-shell">GitHub</a>
         </div>
       </nav>
       <div class="hero-copy">
         <p class="eyebrow">Linux command safety</p>
         <h1>サーバー操作に、最後の防御線を。</h1>
-        <p class="lead">Onyxは危険な操作を実行前に検知・遮断し、別端末のTOTP認証器による承認を要求します。</p>
+        <p class="lead">Osmanthusは指定階層の破壊的なファイル操作を遮断し、証跡をローカル保存し、範囲限定の保守解除にTOTPを要求します。</p>
         <div class="actions">
           <a class="primary" href="#quick-start">クイックスタート</a>
           <a class="secondary" href="./install.html">導入方法</a>
           <a class="secondary" href="./guide.html">仕組みを読む</a>
-          <a class="secondary" href="https://github.com/ttr1563/onyx">ソースを見る</a>
+          <a class="secondary" href="https://github.com/ttr1563/osmanthus-shell">ソースを見る</a>
         </div>
       </div>
     </header>
 
     <main>
-      <section class="principles" aria-label="Onyxの原則">
-        <article><span>01</span><h2>まず遮断</h2><p>危険なコマンドは子プロセスが開始する前に拒否します。</p></article>
-        <article><span>02</span><h2>一度だけ承認</h2><p>短時間の許可を一つのコマンドダイジェストへ結び付け、一度だけ消費します。</p></article>
-        <article><span>03</span><h2>証跡はローカルに</h2><p>秘匿値を除いたJSONL記録を、既存のログ転送基盤から利用できます。</p></article>
+      <section class="principles" aria-label="Osmanthusの原則">
+        <article><span>01</span><h2>カーネル境界</h2><p>対象が変更される前にLinuxカーネルが保護操作を拒否します。</p></article>
+        <article><span>02</span><h2>範囲限定の保守</h2><p>TOTPで選択した階層と操作だけをpolicy設定時間だけ許可します。</p></article>
+        <article><span>03</span><h2>証跡はローカルに</h2><p>root専用JSONL記録を、既存のログ転送基盤から利用できます。</p></article>
       </section>
 
       <section id="quick-start" class="content-grid">
         <div>
           <p class="eyebrow">クイックスタート</p>
           <h2>小さな構成で、明示的に守る。</h2>
-          <p>署名付きDNF/APTリポジトリ、Homebrew、または固定したGit release tagから導入できます。WindowsではWSL 2内のLinux版を利用します。その後、RFC 6238互換の認証アプリを登録します。</p>
+          <p>強制監視版は現在開発ブランチです。パッケージ公開前にローカルで構築・検証し、policy管理者用のRFC 6238互換認証アプリを登録します。</p>
         </div>
-        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
-sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
-sudo dnf install onyx
+        <pre><code>git clone https://github.com/ttr1563/osmanthus-shell.git
+cd osmanthus-shell
+git checkout feature/enforced-shell-monitoring
+cargo build --release --locked
+# 3 binaryとserviceを導入します。詳細は「導入」を参照。
 
-onyx init --account production-web-01
-sudo onyx policy init --account production-policy-admin
-onyx run -- systemctl status nginx</code></pre>
+sudo osmanthus policy init --account production-policy-admin
+sudo systemctl enable --now osmanthusd
+sudo osmanthus policy protect add --path /srv/production --action delete --action rename</code></pre>
       </section>
 
       <section class="flow">
-        <p class="eyebrow">承認フロー</p>
-        <h2>判断が終わるまで、危険な操作は動きません。</h2>
+        <p class="eyebrow">強制フロー</p>
+        <h2>通常のコマンド操作を、保護対象で判定。</h2>
         <ol>
-          <li><strong>検知</strong><span>実行ファイルと引数を評価します。</span></li>
-          <li><strong>拒否</strong><span>該当操作へイベントIDと終了コード77を返します。</span></li>
-          <li><strong>承認</strong><span>イベントを確認し、画面に表示しない形でTOTPコードを入力します。</span></li>
-          <li><strong>一度だけ再実行</strong><span>同一コマンドを30秒以内に一度だけ実行できます。</span></li>
+          <li><strong>観測</strong><span>登録UIDのexecと任意のPTY入出力を記録します。</span></li>
+          <li><strong>照合</strong><span>カーネルで対象階層と操作種別を照合します。</span></li>
+          <li><strong>拒否</strong><span>保護操作を対象変更前に失敗させます。</span></li>
+          <li><strong>保守</strong><span>TOTP付きの階層・操作・cgroup限定leaseが自動失効します。</span></li>
         </ol>
       </section>
 
@@ -72,31 +74,39 @@ onyx run -- systemctl status nginx</code></pre>
         <div>
           <p class="eyebrow">カスタムポリシー</p>
           <h2>root管理で環境固有ルールを追加。</h2>
-          <p>system policyを一度初期化すると、ルールの追加・削除にはroot権限と別管理のpolicy管理者TOTPが必要です。</p>
+          <p>system policyを一度初期化し、強制境界が必要なdirectoryと破壊操作だけを指定します。以後の変更にはroot権限と別管理のpolicy管理者TOTPが必要です。</p>
         </div>
-        <pre><code>sudo onyx policy init --account production-policy-admin
-sudo onyx policy add \
-  --id production-terraform \
-  --executable terraform \
-  --argument-contains apply \
-  --argument-contains production \
-  --risk critical \
-  --reason "production change"</code></pre>
+        <pre><code>sudo osmanthus policy protect add --path /srv/production \
+  --action delete \
+  --action rename \
+  --action truncate \
+  --action write
+
+sudo osmanthus maintenance grant \
+  --path /srv/production/releases/old \
+  --action delete --for 5m
+
+sudo osmanthus policy maintenance set \
+  --default 15m --maximum 12h</code></pre>
       </section>
+
+      <section class="content-grid"><div><p class="eyebrow">データ境界</p><h2>まず完全性を守り、アクセス制御は分離する。</h2><p>opt-inのwrite保護でreleaseやcredential directoryを不変にできます。DB読取り、認証情報、外向き通信先はidentityを考慮したread・network policyが必要なため、コマンド名判定とは分けた次段階として設計します。</p></div><pre><code>sudo osmanthus maintenance pause \
+  --path /srv/production/database \
+  --for 8h</code></pre><p>leaseは認証した接続元のkernel cgroupへ固定され、別login cgroupは遮断を維持します。</p></section>
 
       <section class="scope">
         <p class="eyebrow">対象外</p>
-        <h2>v0.1で担保しない範囲。</h2>
-        <p>root所有policyは通常ユーザーからのルール変更を防ぎます。<code>onyx run</code>外、rootによる迂回、状態所有者によるevent・permit変更、物理的な本人確認は担保しません。</p>
-        <a href="https://github.com/ttr1563/onyx/blob/main/SECURITY.md">セキュリティモデルを読む →</a>
+        <h2>Osmanthusが担保しない範囲。</h2>
+        <p>Linux root、侵害されたkernel・boot chainは封じ込めません。TOTPは独立した承認と時間稼ぎであり、物理的な本人確認ではありません。Windows Server native版は未実装です。</p>
+        <a href="https://github.com/ttr1563/osmanthus-shell/blob/main/SECURITY.md">セキュリティモデルを読む →</a>
         <a href="./guide.html">技術ガイドを読む →</a>
-        <a href="https://github.com/ttr1563/onyx/blob/main/docs/operations.md">運用runbookを読む →</a>
+        <a href="https://github.com/ttr1563/osmanthus-shell/blob/main/docs/operations.md">運用runbookを読む →</a>
       </section>
     </main>
 
     <footer>
-      <p>OnyxはMIT Licenseのオープンソースです。</p>
-      <a href="https://github.com/ttr1563/onyx">github.com/ttr1563/onyx</a>
+      <p>OsmanthusはMIT Licenseのオープンソースです。</p>
+      <a href="https://github.com/ttr1563/osmanthus-shell">github.com/ttr1563/osmanthus-shell</a>
     </footer>
   </body>
 </html>

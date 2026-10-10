@@ -15,7 +15,7 @@ if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   exit 1
 fi
 
-output="${2:-dist/onyx-${version}.tar.gz}"
+output="${2:-dist/osmanthus-${version}.tar.gz}"
 mkdir -p "$(dirname "$output")"
 temporary="$(mktemp -d)"
 trap 'rm -rf "$temporary"' EXIT
@@ -31,7 +31,7 @@ tar \
   --group=0 \
   --numeric-owner \
   --pax-option=delete=atime,delete=ctime \
-  --transform="s|^|onyx-${version}/|" \
+  --transform="s|^|osmanthus-${version}/|" \
   -cf "$temporary/source.tar"
 gzip -n -9 < "$temporary/source.tar" > "$output"
 

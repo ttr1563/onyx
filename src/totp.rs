@@ -2,7 +2,7 @@ use hmac::{Hmac, Mac};
 use sha1::Sha1;
 use zeroize::Zeroizing;
 
-use crate::{OnyxError, Result};
+use crate::{OsmanthusError, Result};
 
 const STEP_SECONDS: i64 = 30;
 const DIGITS_MODULUS: u32 = 1_000_000;
@@ -15,7 +15,9 @@ pub fn verify_code(secret_base32: &str, code: &str, unix_time: i64) -> Result<Op
     let secret = Zeroizing::new(
         data_encoding::BASE32_NOPAD
             .decode(secret_base32.as_bytes())
-            .map_err(|error| OnyxError::InvalidState(format!("invalid TOTP secret: {error}")))?,
+            .map_err(|error| {
+                OsmanthusError::InvalidState(format!("invalid TOTP secret: {error}"))
+            })?,
     );
     let current = unix_time.div_euclid(STEP_SECONDS);
     for offset in [-1_i64, 0, 1] {
@@ -35,11 +37,13 @@ pub fn code_at(secret_base32: &str, unix_time: i64) -> Result<String> {
     let secret = Zeroizing::new(
         data_encoding::BASE32_NOPAD
             .decode(secret_base32.as_bytes())
-            .map_err(|error| OnyxError::InvalidState(format!("invalid TOTP secret: {error}")))?,
+            .map_err(|error| {
+                OsmanthusError::InvalidState(format!("invalid TOTP secret: {error}"))
+            })?,
     );
     let counter = unix_time.div_euclid(STEP_SECONDS);
     if counter < 0 {
-        return Err(OnyxError::InvalidState(
+        return Err(OsmanthusError::InvalidState(
             "system time predates Unix epoch".to_owned(),
         ));
     }
@@ -48,7 +52,7 @@ pub fn code_at(secret_base32: &str, unix_time: i64) -> Result<String> {
 
 fn generate(secret: &[u8], counter: u64) -> Result<u32> {
     let mut mac = Hmac::<Sha1>::new_from_slice(secret)
-        .map_err(|_| OnyxError::InvalidState("invalid TOTP key length".to_owned()))?;
+        .map_err(|_| OsmanthusError::InvalidState("invalid TOTP key length".to_owned()))?;
     mac.update(&counter.to_be_bytes());
     let digest = mac.finalize().into_bytes();
     let offset = (digest[19] & 0x0f) as usize;

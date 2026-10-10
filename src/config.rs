@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
 
-use crate::{OnyxError, Result};
+use crate::{OsmanthusError, Result};
 
 pub const CONFIG_FILE: &str = "config.json";
 pub const AUTH_STATE_FILE: &str = "auth-state.json";
@@ -70,7 +70,7 @@ impl Config {
 
     fn validate(&self) -> Result<()> {
         if self.schema_version != 1 {
-            return Err(OnyxError::InvalidState(format!(
+            return Err(OsmanthusError::InvalidState(format!(
                 "unsupported configuration schema version: {}",
                 self.schema_version
             )));
@@ -81,11 +81,11 @@ impl Config {
             data_encoding::BASE32_NOPAD
                 .decode(self.totp_secret_base32.as_bytes())
                 .map_err(|error| {
-                    OnyxError::InvalidState(format!("invalid TOTP secret: {error}"))
+                    OsmanthusError::InvalidState(format!("invalid TOTP secret: {error}"))
                 })?,
         );
         if secret.len() < 20 {
-            return Err(OnyxError::InvalidState(
+            return Err(OsmanthusError::InvalidState(
                 "TOTP secret must contain at least 160 bits".to_owned(),
             ));
         }
@@ -94,7 +94,7 @@ impl Config {
             || !(1..=100).contains(&self.max_auth_failures)
             || !(1..=3_600).contains(&self.auth_lock_seconds)
         {
-            return Err(OnyxError::InvalidState(
+            return Err(OsmanthusError::InvalidState(
                 "configuration limits are outside supported safety bounds".to_owned(),
             ));
         }
@@ -104,7 +104,7 @@ impl Config {
 
 fn validate_label(name: &str, value: &str, maximum: usize) -> Result<()> {
     if value.trim().is_empty() || value.len() > maximum || value.chars().any(char::is_control) {
-        return Err(OnyxError::InvalidState(format!(
+        return Err(OsmanthusError::InvalidState(format!(
             "{name} must be 1-{maximum} bytes without control characters"
         )));
     }
@@ -121,25 +121,27 @@ pub fn state_dir(explicit: Option<&Path>) -> Result<PathBuf> {
     if let Some(path) = explicit {
         return Ok(path.to_path_buf());
     }
-    if let Some(path) = env::var_os("ONYX_STATE_DIR") {
+    if let Some(path) = env::var_os("OSMANTHUS_STATE_DIR") {
         return Ok(PathBuf::from(path));
     }
     if unsafe { libc::geteuid() } == 0 {
-        return Ok(PathBuf::from("/var/lib/onyx"));
+        return Ok(PathBuf::from("/var/lib/osmanthus"));
     }
     if let Some(path) = env::var_os("XDG_STATE_HOME") {
-        return Ok(PathBuf::from(path).join("onyx"));
+        return Ok(PathBuf::from(path).join("osmanthus"));
     }
-    let home =
-        env::var_os("HOME").ok_or_else(|| OnyxError::InvalidState("HOME is not set".to_owned()))?;
-    Ok(PathBuf::from(home).join(".local/state/onyx"))
+    let home = env::var_os("HOME")
+        .ok_or_else(|| OsmanthusError::InvalidState("HOME is not set".to_owned()))?;
+    Ok(PathBuf::from(home).join(".local/state/osmanthus"))
 }
 
 pub fn initialize(root: &Path, config: &Config) -> Result<()> {
     if root.exists() {
         reject_symlink(root)?;
         if root.join(CONFIG_FILE).exists() {
-            return Err(OnyxError::AlreadyInitialized(root.display().to_string()));
+            return Err(OsmanthusError::AlreadyInitialized(
+                root.display().to_string(),
+            ));
         }
     } else {
         fs::create_dir_all(root)?;
@@ -166,7 +168,7 @@ pub fn initialize(root: &Path, config: &Config) -> Result<()> {
 pub fn load_config(root: &Path) -> Result<Config> {
     let path = root.join(CONFIG_FILE);
     if !path.exists() {
-        return Err(OnyxError::NotInitialized);
+        return Err(OsmanthusError::NotInitialized);
     }
     validate_state_root(root)?;
     let config: Config = load_private_json(&path)?;
@@ -183,6 +185,30 @@ pub fn save_auth_state(root: &Path, state: &AuthState) -> Result<()> {
     atomic_write_json(&root.join(AUTH_STATE_FILE), state)
 }
 
+pub fn replace_authenticator(root: &Path, config: &Config, state: &AuthState) -> Result<()> {
+    config.validate()?;
+    let previous_config = load_config(root)?;
+    let previous_state = load_auth_state(root)?;
+    atomic_write_json(&root.join(CONFIG_FILE), config)?;
+    if let Err(error) = save_auth_state(root, state) {
+        let mut rollback_failures = Vec::new();
+        if let Err(rollback_error) = atomic_write_json(&root.join(CONFIG_FILE), &previous_config) {
+            rollback_failures.push(format!("configuration: {rollback_error}"));
+        }
+        if let Err(rollback_error) = save_auth_state(root, &previous_state) {
+            rollback_failures.push(format!("authentication state: {rollback_error}"));
+        }
+        if rollback_failures.is_empty() {
+            return Err(error);
+        }
+        return Err(OsmanthusError::InvalidState(format!(
+            "authenticator update failed ({error}); rollback also failed ({})",
+            rollback_failures.join("; ")
+        )));
+    }
+    Ok(())
+}
+
 pub fn load_private_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T> {
     validate_private_path(path)?;
     let file = OpenOptions::new()
@@ -190,7 +216,7 @@ pub fn load_private_json<T: for<'de> Deserialize<'de>>(path: &Path) -> Result<T>
         .custom_flags(libc::O_NOFOLLOW)
         .open(path)?;
     if file.metadata()?.len() > MAX_STATE_JSON_BYTES {
-        return Err(OnyxError::InvalidState(format!(
+        return Err(OsmanthusError::InvalidState(format!(
             "state file exceeds 1 MiB: {}",
             path.display()
         )));
@@ -204,9 +230,9 @@ pub fn atomic_write_json<T: Serialize>(path: &Path, value: &T) -> Result<()> {
     }
     let parent = path
         .parent()
-        .ok_or_else(|| OnyxError::UnsafePath(path.display().to_string()))?;
+        .ok_or_else(|| OsmanthusError::UnsafePath(path.display().to_string()))?;
     validate_state_root(parent)?;
-    let temporary = parent.join(format!(".onyx-{}.tmp", Uuid::new_v4()));
+    let temporary = parent.join(format!(".osmanthus-{}.tmp", Uuid::new_v4()));
     let result = (|| -> Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
@@ -243,7 +269,7 @@ fn create_private_file(path: &Path) -> Result<()> {
 
 pub fn reject_symlink(path: &Path) -> Result<()> {
     if fs::symlink_metadata(path)?.file_type().is_symlink() {
-        return Err(OnyxError::UnsafePath(format!(
+        return Err(OsmanthusError::UnsafePath(format!(
             "{} is a symbolic link",
             path.display()
         )));
@@ -255,7 +281,7 @@ pub fn validate_state_root(path: &Path) -> Result<()> {
     reject_symlink(path)?;
     let metadata = fs::metadata(path)?;
     if !metadata.is_dir() {
-        return Err(OnyxError::UnsafePath(format!(
+        return Err(OsmanthusError::UnsafePath(format!(
             "{} is not a directory",
             path.display()
         )));
@@ -267,7 +293,7 @@ pub fn validate_private_path(path: &Path) -> Result<()> {
     reject_symlink(path)?;
     let metadata = fs::metadata(path)?;
     if !metadata.is_file() {
-        return Err(OnyxError::UnsafePath(format!(
+        return Err(OsmanthusError::UnsafePath(format!(
             "{} is not a regular file",
             path.display()
         )));
@@ -280,7 +306,7 @@ fn validate_owner_and_mode(path: &Path, metadata: &fs::Metadata) -> Result<()> {
 
     let mode = metadata.permissions().mode();
     if mode & 0o077 != 0 {
-        return Err(OnyxError::UnsafePath(format!(
+        return Err(OsmanthusError::UnsafePath(format!(
             "{} must not be accessible by group or others (mode {:o})",
             path.display(),
             mode & 0o777
@@ -288,7 +314,7 @@ fn validate_owner_and_mode(path: &Path, metadata: &fs::Metadata) -> Result<()> {
     }
     let effective_uid = unsafe { libc::geteuid() };
     if metadata.uid() != effective_uid {
-        return Err(OnyxError::UnsafePath(format!(
+        return Err(OsmanthusError::UnsafePath(format!(
             "{} must be owned by effective uid {}",
             path.display(),
             effective_uid
@@ -299,17 +325,46 @@ fn validate_owner_and_mode(path: &Path, metadata: &fs::Metadata) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::Config;
+    use tempfile::TempDir;
+
+    use super::{AuthState, Config};
 
     #[test]
     fn totp_uri_uses_standard_defaults_without_repeating_them() {
-        let config = Config::new("Onyx".to_owned(), "production deploy".to_owned()).unwrap();
+        let config = Config::new("Osmanthus".to_owned(), "production deploy".to_owned()).unwrap();
         let uri = config.totp_uri();
 
-        assert!(uri.starts_with("otpauth://totp/Onyx%3Aproduction%20deploy?secret="));
-        assert!(uri.ends_with("&issuer=Onyx"));
+        assert!(uri.starts_with("otpauth://totp/Osmanthus%3Aproduction%20deploy?secret="));
+        assert!(uri.ends_with("&issuer=Osmanthus"));
         assert!(!uri.contains("algorithm="));
         assert!(!uri.contains("digits="));
         assert!(!uri.contains("period="));
+    }
+
+    #[test]
+    fn replaces_authenticator_and_resets_authentication_state() {
+        let temp = TempDir::new().unwrap();
+        let original = Config::new("Osmanthus".to_owned(), "old".to_owned()).unwrap();
+        super::initialize(temp.path(), &original).unwrap();
+        super::save_auth_state(
+            temp.path(),
+            &AuthState {
+                failed_attempts: 3,
+                locked_until_unix: Some(500),
+                last_accepted_counter: Some(10),
+            },
+        )
+        .unwrap();
+        let replacement = Config::new("Osmanthus".to_owned(), "new".to_owned()).unwrap();
+
+        super::replace_authenticator(temp.path(), &replacement, &AuthState::default()).unwrap();
+
+        let loaded = super::load_config(temp.path()).unwrap();
+        assert_eq!(loaded.account, "new");
+        assert_ne!(loaded.totp_secret_base32, original.totp_secret_base32);
+        assert_eq!(
+            super::load_auth_state(temp.path()).unwrap().failed_attempts,
+            0
+        );
     }
 }

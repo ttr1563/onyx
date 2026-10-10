@@ -1,10 +1,11 @@
 use std::ffi::{OsStr, OsString};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
 use crate::config::{self, POLICY_FILE};
-use crate::{OnyxError, Result};
+use crate::enforcement::{EnforcementPolicy, MaintenanceSettings, ProtectedAction, ProtectedRoot};
+use crate::{OsmanthusError, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -34,6 +35,14 @@ pub struct CustomRule {
 pub struct PolicyFile {
     pub schema_version: u32,
     pub rules: Vec<CustomRule>,
+    #[serde(default)]
+    pub protected_roots: Vec<ProtectedRoot>,
+    #[serde(default)]
+    pub monitored_uids: std::collections::BTreeSet<u32>,
+    #[serde(default)]
+    pub monitored_shells: std::collections::BTreeMap<u32, PathBuf>,
+    #[serde(default)]
+    pub maintenance: MaintenanceSettings,
 }
 
 impl Default for PolicyFile {
@@ -41,6 +50,10 @@ impl Default for PolicyFile {
         Self {
             schema_version: 1,
             rules: Vec::new(),
+            protected_roots: Vec::new(),
+            monitored_uids: std::collections::BTreeSet::new(),
+            monitored_shells: std::collections::BTreeMap::new(),
+            maintenance: MaintenanceSettings::default(),
         }
     }
 }
@@ -60,7 +73,7 @@ impl PolicyFile {
     pub fn add(&mut self, rule: CustomRule) -> Result<()> {
         validate_rule(&rule)?;
         if self.rules.iter().any(|existing| existing.id == rule.id) {
-            return Err(OnyxError::InvalidState(format!(
+            return Err(OsmanthusError::InvalidState(format!(
                 "policy rule already exists: {}",
                 rule.id
             )));
@@ -75,19 +88,104 @@ impl PolicyFile {
             .rules
             .iter()
             .position(|rule| rule.id == id)
-            .ok_or_else(|| OnyxError::InvalidState(format!("policy rule not found: {id}")))?;
+            .ok_or_else(|| OsmanthusError::InvalidState(format!("policy rule not found: {id}")))?;
         Ok(self.rules.remove(index))
+    }
+
+    pub fn add_protected_root(&mut self, root: ProtectedRoot) -> Result<()> {
+        if self
+            .protected_roots
+            .iter()
+            .any(|existing| existing.path() == root.path())
+        {
+            return Err(OsmanthusError::InvalidState(format!(
+                "protected root already exists: {}",
+                root.path().display()
+            )));
+        }
+        let mut candidate = self.clone();
+        candidate.protected_roots.push(root);
+        candidate
+            .protected_roots
+            .sort_by(|left, right| left.path().cmp(right.path()));
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
+    pub fn remove_protected_root(&mut self, path: &Path) -> Result<ProtectedRoot> {
+        let index = self
+            .protected_roots
+            .iter()
+            .position(|root| root.path() == path)
+            .ok_or_else(|| {
+                OsmanthusError::InvalidState(format!(
+                    "protected root not found: {}",
+                    path.display()
+                ))
+            })?;
+        Ok(self.protected_roots.remove(index))
+    }
+
+    pub fn protected_actions_for_scope(&self, scope: &Path) -> Result<Vec<ProtectedAction>> {
+        let root = self
+            .protected_roots
+            .iter()
+            .filter(|root| scope.starts_with(root.path()))
+            .max_by_key(|root| root.path().components().count())
+            .ok_or_else(|| {
+                OsmanthusError::InvalidState(format!(
+                    "maintenance pause path is outside every protected root: {}",
+                    scope.display()
+                ))
+            })?;
+        Ok(root.actions().iter().copied().collect())
+    }
+
+    pub fn add_monitored_uid(&mut self, uid: u32, shell: Option<PathBuf>) -> Result<()> {
+        if let Some(shell) = &shell {
+            validate_shell(shell)?;
+        }
+        if self.monitored_uids.contains(&uid) {
+            return Err(OsmanthusError::InvalidState(format!(
+                "monitored UID already exists: {uid}"
+            )));
+        }
+        let mut candidate = self.clone();
+        candidate.monitored_uids.insert(uid);
+        if let Some(shell) = shell {
+            candidate.monitored_shells.insert(uid, shell);
+        }
+        candidate.validate()?;
+        *self = candidate;
+        Ok(())
+    }
+
+    pub fn remove_monitored_uid(&mut self, uid: u32) -> Result<()> {
+        if !self.monitored_uids.remove(&uid) {
+            return Err(OsmanthusError::InvalidState(format!(
+                "monitored UID not found: {uid}"
+            )));
+        }
+        self.monitored_shells.remove(&uid);
+        Ok(())
+    }
+
+    pub fn set_maintenance(&mut self, settings: MaintenanceSettings) -> Result<()> {
+        settings.validate()?;
+        self.maintenance = settings;
+        Ok(())
     }
 
     pub(crate) fn validate(&self) -> Result<()> {
         if self.schema_version != 1 {
-            return Err(OnyxError::InvalidState(format!(
+            return Err(OsmanthusError::InvalidState(format!(
                 "unsupported policy schema version: {}",
                 self.schema_version
             )));
         }
         if self.rules.len() > 1_000 {
-            return Err(OnyxError::InvalidState(
+            return Err(OsmanthusError::InvalidState(
                 "policy contains more than 1000 custom rules".to_owned(),
             ));
         }
@@ -95,14 +193,49 @@ impl PolicyFile {
         for rule in &self.rules {
             validate_rule(rule)?;
             if !ids.insert(&rule.id) {
-                return Err(OnyxError::InvalidState(format!(
+                return Err(OsmanthusError::InvalidState(format!(
                     "duplicate policy rule: {}",
                     rule.id
                 )));
             }
         }
+        EnforcementPolicy::from_parts_with_maintenance(
+            self.protected_roots.clone(),
+            self.monitored_uids.clone(),
+            self.maintenance,
+        )?;
+        for (uid, shell) in &self.monitored_shells {
+            if !self.monitored_uids.contains(uid) {
+                return Err(OsmanthusError::InvalidState(format!(
+                    "shell configured for unmonitored UID: {uid}"
+                )));
+            }
+            validate_shell(shell)?;
+        }
         Ok(())
     }
+}
+
+fn validate_shell(shell: &Path) -> Result<()> {
+    if !shell.is_absolute()
+        || shell.components().any(|component| {
+            matches!(
+                component,
+                std::path::Component::CurDir | std::path::Component::ParentDir
+            )
+        })
+    {
+        return Err(OsmanthusError::InvalidState(format!(
+            "monitored shell must be a canonical absolute path: {}",
+            shell.display()
+        )));
+    }
+    if shell == Path::new("/usr/bin/osmanthus-shell") || shell == Path::new("/usr/bin/onyx-shell") {
+        return Err(OsmanthusError::InvalidState(
+            "monitored shell cannot point to an Osmanthus or legacy Onyx supervisor".to_owned(),
+        ));
+    }
+    Ok(())
 }
 
 pub fn evaluate(command: &[OsString]) -> Vec<Finding> {
@@ -257,7 +390,7 @@ pub fn validate_rule(rule: &CustomRule) -> Result<()> {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
         && rule.id.bytes().next().is_some_and(|byte| byte != b'-');
     if !valid_id {
-        return Err(OnyxError::InvalidState(
+        return Err(OsmanthusError::InvalidState(
             "policy rule ID must be 1-64 lowercase letters, digits, or hyphens and must not start with a hyphen"
                 .to_owned(),
         ));
@@ -267,7 +400,7 @@ pub fn validate_rule(rule: &CustomRule) -> Result<()> {
         || rule.executable.chars().any(char::is_control)
         || Path::new(&rule.executable).file_name() != Some(OsStr::new(&rule.executable))
     {
-        return Err(OnyxError::InvalidState(
+        return Err(OsmanthusError::InvalidState(
             "policy executable must be a basename of 1-128 bytes".to_owned(),
         ));
     }
@@ -276,7 +409,7 @@ pub fn validate_rule(rule: &CustomRule) -> Result<()> {
             value.is_empty() || value.len() > 256 || value.chars().any(char::is_control)
         })
     {
-        return Err(OnyxError::InvalidState(
+        return Err(OsmanthusError::InvalidState(
             "a policy rule may contain up to 16 non-empty argument fragments of at most 256 bytes"
                 .to_owned(),
         ));
@@ -285,7 +418,7 @@ pub fn validate_rule(rule: &CustomRule) -> Result<()> {
         || rule.reason.len() > 256
         || rule.reason.chars().any(char::is_control)
     {
-        return Err(OnyxError::InvalidState(
+        return Err(OsmanthusError::InvalidState(
             "policy reason must be 1-256 bytes".to_owned(),
         ));
     }
@@ -476,5 +609,92 @@ mod tests {
         assert_eq!(policy.remove(&rule.id).unwrap().id, rule.id);
         assert!(policy.rules.is_empty());
         assert!(policy.remove("missing-rule").is_err());
+    }
+
+    #[test]
+    fn legacy_policy_json_defaults_to_no_protected_roots() {
+        let policy: PolicyFile =
+            serde_json::from_str(r#"{"schema_version":1,"rules":[]}"#).unwrap();
+        assert!(policy.protected_roots.is_empty());
+        assert!(policy.monitored_uids.is_empty());
+        assert!(policy.monitored_shells.is_empty());
+        assert_eq!(policy.maintenance, MaintenanceSettings::default());
+        policy.validate().unwrap();
+    }
+
+    #[test]
+    fn maintenance_settings_are_bounded_and_persisted() {
+        let mut policy = PolicyFile::default();
+        let settings = MaintenanceSettings {
+            default_ttl_seconds: 3_600,
+            max_ttl_seconds: 28_800,
+        };
+        policy.set_maintenance(settings).unwrap();
+        assert_eq!(policy.maintenance, settings);
+        assert!(
+            policy
+                .set_maintenance(MaintenanceSettings {
+                    default_ttl_seconds: 28_801,
+                    max_ttl_seconds: 28_800,
+                })
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn monitored_uid_can_have_a_separate_real_shell() {
+        let mut policy = PolicyFile::default();
+        policy
+            .add_monitored_uid(1000, Some(PathBuf::from("/bin/bash")))
+            .unwrap();
+        assert_eq!(
+            policy.monitored_shells.get(&1000),
+            Some(&PathBuf::from("/bin/bash"))
+        );
+        policy.remove_monitored_uid(1000).unwrap();
+        assert!(policy.monitored_shells.is_empty());
+        assert!(
+            policy
+                .add_monitored_uid(1000, Some(PathBuf::from("/usr/bin/osmanthus-shell")))
+                .is_err()
+        );
+        assert!(
+            policy
+                .add_monitored_uid(1000, Some(PathBuf::from("/usr/bin/onyx-shell")))
+                .is_err()
+        );
+        assert!(!policy.monitored_uids.contains(&1000));
+    }
+
+    #[test]
+    fn pause_uses_the_most_specific_protected_root_actions() {
+        let mut policy = PolicyFile::default();
+        policy
+            .add_protected_root(
+                ProtectedRoot::new("/srv/app", [ProtectedAction::Delete].into_iter().collect())
+                    .unwrap(),
+            )
+            .unwrap();
+        policy
+            .add_protected_root(
+                ProtectedRoot::new(
+                    "/srv/app/database",
+                    [ProtectedAction::Write].into_iter().collect(),
+                )
+                .unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(
+            policy
+                .protected_actions_for_scope(Path::new("/srv/app/database/data"))
+                .unwrap(),
+            vec![ProtectedAction::Write]
+        );
+        assert!(
+            policy
+                .protected_actions_for_scope(Path::new("/srv/other"))
+                .is_err()
+        );
     }
 }

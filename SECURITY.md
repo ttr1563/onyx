@@ -2,7 +2,10 @@
 
 ## Supported versions
 
-Onyx is still in the pre-1.0 development series. Security fixes are applied to the latest published patch release and the `develop` branch until a longer-term support policy is published.
+Osmanthus is in pre-release development. The public Onyx v0.1.3 artifacts are
+the earlier compatibility wrapper and are not an Osmanthus enforcement release.
+Security fixes for Osmanthus are applied to `develop` until its first signed
+release establishes a supported-version policy.
 
 ## Reporting a vulnerability
 
@@ -12,14 +15,26 @@ Use GitHub's private vulnerability reporting feature for this repository. Includ
 
 ## Security boundary
 
-Onyx v0.1 is an explicit command wrapper. It reduces mistakes and constrains cooperating automation, but it does not claim to resist:
+Osmanthus uses Linux BPF LSM hooks to deny selected filesystem operations below
+administrator-configured roots. The decision follows the target resource and
+operation class rather than an executable name, so normal enforcement does not
+require `osmanthus run`.
 
-- execution that bypasses `onyx run`;
-- an attacker with root or equivalent host control;
-- modification of that identity's command events, permits, execution-approval state, or local audit records;
-- deletion of local-only audit records by a privileged attacker;
-- all semantic equivalents of a dangerous command.
+The effective policy and policy-administrator TOTP state are root-owned below
+`/etc/osmanthus`. Policy changes and temporary maintenance leases require both
+UID 0 and the administrator TOTP. The policy files are integrity-checked but not
+encrypted; protected paths and rule values must not contain secrets.
 
-An initialized system policy is held at `/etc/onyx` as root-owned read-only files. Policy `add` and `remove` require effective UID 0 and a separate administrator TOTP. Missing files, unsafe ownership or modes, symbolic links, invalid schema, and digest mismatches fail closed. SHA-256 is an integrity consistency check, not a defense against root, which can replace the policy and digest together.
+The boundary does not contain Linux root, a compromised kernel, or a compromised
+boot chain. Such an identity can replace local policy, code, BPF state, and audit
+records. TOTP provides a separately held approval factor but is not proof of
+physical presence.
 
-Command execution approval uses a different TOTP seed in the protected identity's mutable state. TOTP is a shared-secret mechanism: code running as that identity can read the execution-approval seed and modify its events or permits. Root-owned policy protects rule definitions, but does not turn the wrapper into containment for a fully compromised identity. A privileged broker with asymmetric, hardware-backed approval remains a possible stronger design.
+Current operation classes cover deletion, rename or move, `O_TRUNC`, opt-in
+ordinary writes and writable shared mappings, and ownership or mode changes.
+Maintenance leases additionally require the current kernel cgroup. Native
+Windows Server enforcement is a separate, unimplemented platform track; WSL
+does not provide that coverage.
+
+The public Onyx v0.1.3 wrapper has a different and weaker boundary. Its state is
+not imported automatically into Osmanthus.

@@ -1,0 +1,27 @@
+[Unit]
+Description=Osmanthus kernel enforcement daemon
+Documentation=https://ttr1563.github.io/osmanthus-shell/
+After=local-fs.target
+RequiresMountsFor=/sys/fs/bpf
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/osmanthusd
+Restart=on-failure
+RestartSec=1s
+UMask=0077
+RuntimeDirectory=osmanthus
+RuntimeDirectoryMode=0755
+LogsDirectory=osmanthus
+LogsDirectoryMode=0700
+NoNewPrivileges=no
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/osmanthus /var/log/osmanthus /sys/fs/bpf /etc/osmanthus/admin
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

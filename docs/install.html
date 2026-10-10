@@ -1,86 +1,49 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="robots" content="noindex,nofollow">
-    <meta name="description" content="Install Onyx on Amazon Linux, Debian, Ubuntu, macOS, or Windows through WSL 2.">
-    <link rel="canonical" href="https://ttr1563.github.io/onyx/install.html">
-    <link rel="alternate" hreflang="en" href="https://ttr1563.github.io/onyx/install.html">
-    <link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/onyx/ja/install.html">
-    <link rel="alternate" hreflang="x-default" href="https://ttr1563.github.io/onyx/install.html">
-    <link rel="stylesheet" href="./styles.css">
-    <title>Install Onyx</title>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex,nofollow"><meta name="description" content="Build and install the enforced Osmanthus Linux command guard.">
+    <link rel="canonical" href="https://ttr1563.github.io/osmanthus-shell/install.html"><link rel="alternate" hreflang="ja" href="https://ttr1563.github.io/osmanthus-shell/ja/install.html"><link rel="stylesheet" href="./styles.css">
+    <title>Install Osmanthus</title>
   </head>
   <body>
-    <header class="hero">
-      <nav><a class="brand" href="./" aria-label="Onyx home">ONYX</a><div class="nav-links"><a href="./guide.html">Guide</a><a href="./ja/install.html" lang="ja" hreflang="ja">日本語</a><a href="https://github.com/ttr1563/onyx">GitHub</a></div></nav>
-      <div class="docs-hero"><p class="eyebrow">Installation</p><h1>Choose a verified path.</h1><p class="lead">Signed Linux repositories are the operational default. Homebrew and tag-pinned source installation are available when a native package is not.</p></div>
-    </header>
+    <header class="hero"><nav><a class="brand" href="./">OSMANTHUS</a><div class="nav-links"><a href="./guide.html">Guide</a><a href="./ja/install.html" lang="ja">日本語</a><a href="https://github.com/ttr1563/osmanthus-shell">GitHub</a></div></nav><div class="docs-hero"><p class="eyebrow">Installation</p><h1>Install the complete enforcement stack.</h1><p class="lead">The daemon, BPF programs, supervised shell, service unit, and CLI are one operational unit.</p></div></header>
     <main class="docs">
-      <section>
-        <h2>Support matrix</h2>
-        <table class="state-table"><thead><tr><th>Environment</th><th>Install path</th><th>Protection scope</th></tr></thead><tbody>
-          <tr><td>Amazon Linux 2023 x86_64</td><td>Signed DNF repository</td><td>Supported Linux target</td></tr>
-          <tr><td>Debian 12 / Ubuntu 22.04+ amd64</td><td>Signed APT repository</td><td>Supported Linux target</td></tr>
-          <tr><td>Other Linux</td><td>Homebrew or release-tag Cargo install</td><td>Buildable; distribution verification varies</td></tr>
-          <tr><td>macOS</td><td>Homebrew or Cargo</td><td>Build path only; native command protection is unverified</td></tr>
-          <tr><td>Windows 10/11 x64</td><td>WSL 2, then Linux instructions</td><td>WSL commands only; no PowerShell or native Windows interception</td></tr>
-        </tbody></table>
-        <p class="callout"><strong>Every platform keeps the same boundary:</strong> only commands explicitly launched through <code>onyx run -- ...</code> are evaluated.</p>
-      </section>
-      <section>
-        <h2>Amazon Linux 2023</h2>
-        <pre><code>sudo rpm --import https://ttr1563.github.io/onyx/rpm/RPM-GPG-KEY-ONYX
-sudo dnf install https://ttr1563.github.io/onyx/rpm/onyx-release-1-1.noarch.rpm
-sudo dnf install onyx</code></pre>
-        <p>Expected key fingerprint: <code>E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C</code>. Upgrade with <code>sudo dnf upgrade onyx</code>.</p>
-      </section>
-      <section>
-        <h2>Debian 12 and Ubuntu 22.04 or later</h2>
-        <p>Download the key as a regular user, inspect its fingerprint, and only then install the key and scoped deb822 source:</p>
-        <pre><code>curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.asc
-gpg --show-keys --with-fingerprint onyx.asc
-# Expected: E9E3 C123 DEDF B3E9 AEA1 F3A9 CD2E 615D BC32 CF0C
-sudo install -D -m0644 onyx.asc /etc/apt/keyrings/onyx.asc
+      <section><h2>Release status</h2><p class="callout"><strong>Not released yet:</strong> the public Onyx v0.1.3 DNF, APT, Homebrew, and Git-tag packages are the earlier explicit-wrapper product. They are not Osmanthus packages and do not contain this enforced backend.</p><p>The commands below build the current development branch for evaluation. A new version and signed repositories will be documented only after package-level acceptance and release approval.</p></section>
+      <section><h2>Support matrix</h2><table class="state-table"><thead><tr><th>Environment</th><th>Current path</th><th>Status</th></tr></thead><tbody><tr><td>Amazon Linux 2023 x86_64</td><td>Source build; local RPM build</td><td>Package install, kernel enforcement, scoped maintenance, audit outage, PTY session, decommission, and uninstall verified on kernel 6.1; upgrade/rollback and SSM remain release gates</td></tr><tr><td>Debian 12 / Ubuntu 22.04+ amd64</td><td>Source build; local deb build</td><td>Package generated; installed-package integration remains a release gate</td></tr><tr><td>Ubuntu 24.04 arm64</td><td>Native source build; local arm64 deb</td><td>Package install, kernel enforcement, scoped maintenance, audit, decommission, and uninstall verified on kernel 6.8; current ABI 4 changes require revalidation</td></tr><tr><td>Other Linux</td><td>Source build</td><td>Requires BTF, active BPF LSM, bpffs, and systemd</td></tr><tr><td>macOS</td><td>No enforced installation</td><td>Native enforcement deferred</td></tr><tr><td>Windows Server</td><td>No native installation</td><td>Backend and native tests not implemented</td></tr><tr><td>WSL 2</td><td>Linux build inside WSL</td><td>Does not protect Windows processes or services</td></tr></tbody></table></section>
+      <section><h2>Linux prerequisites</h2><pre><code>test -r /sys/kernel/btf/vmlinux
+grep -qw bpf /sys/kernel/security/lsm
+mountpoint /sys/fs/bpf
+systemctl --version
+sudo bpftool feature probe kernel | grep -A200 'program type lsm' | grep -w bpf_loop</code></pre><p>Building additionally requires Rust 1.91+, clang/LLVM, libelf, zlib, libbpf headers, and a C toolchain. The final package embeds its BPF object; clang is not a runtime dependency.</p></section>
+      <section><h2>Build from Git</h2><pre><code>git clone https://github.com/ttr1563/osmanthus-shell.git
+cd osmanthus-shell
+git fetch origin
+git checkout feature/enforced-shell-monitoring
+cargo build --release --locked
 
-curl -fsSLO https://ttr1563.github.io/onyx/apt/onyx.sources
-sudo install -m0644 onyx.sources /etc/apt/sources.list.d/onyx.sources
-rm onyx.asc onyx.sources
+sudo install -m0755 target/release/osmanthus /usr/bin/osmanthus
+sudo install -m0755 target/release/osmanthusd /usr/bin/osmanthusd
+sudo install -m0755 target/release/osmanthus-shell /usr/bin/osmanthus-shell
+sudo install -m0644 ops/systemd/osmanthusd.service /usr/lib/systemd/system/osmanthusd.service
+sudo install -m0644 ops/logrotate/osmanthus /etc/logrotate.d/osmanthus
+sudo install -D -m0644 ops/ssm/osmanthus-session.json /usr/share/osmanthus/ssm/osmanthus-session.json</code></pre><p>A mutable development branch is suitable only for evaluation. Production installation must use an immutable signed release artifact.</p></section>
+      <section><h2>Build local packages</h2><pre><code>scripts/build-rpm.sh 0.1.3 dist/rpm
+scripts/build-deb.sh 0.1.3 dist/deb</code></pre><p>These commands create local artifacts only; they do not publish or sign a repository. The deb builder produces <code>amd64</code> on native Linux x86-64 and <code>arm64</code> on native Linux ARM64; it does not cross-package. The development package currently has the same manifest version as public v0.1.3, so it must not overwrite or masquerade as that release. Version selection is a release decision.</p></section>
+      <section><h2>Initialize and verify</h2><pre><code>sudo osmanthus policy init --account production-policy-admin
+sudo systemctl daemon-reload
+sudo systemctl enable --now osmanthusd
+osmanthus daemon status
 
-sudo apt-get update
-sudo apt-get install onyx</code></pre>
-        <p>Upgrade with <code>sudo apt-get update &amp;&amp; sudo apt-get install --only-upgrade onyx</code>. The source file uses <code>Signed-By</code>; the key does not become a global APT trust anchor.</p>
-      </section>
-      <section>
-        <h2>Homebrew</h2>
-        <pre><code>brew tap ttr1563/onyx https://github.com/ttr1563/onyx.git
-brew install ttr1563/onyx/onyx</code></pre>
-        <p>Linux is the verified protection target. The formula can build on macOS, but native macOS command protection is not claimed.</p>
-      </section>
-      <section>
-        <h2>Install from Git</h2>
-        <p>Use an immutable release tag and the committed lockfile:</p>
-        <pre><code>cargo install \
-  --git https://github.com/ttr1563/onyx.git \
-  --tag v0.1.3 \
-  --locked</code></pre>
-        <p>Rust 1.91 or later and a platform C toolchain are required. For development, clone the same tag and run <code>cargo install --path . --locked</code>. Do not use a mutable branch for repeatable server deployment.</p>
-      </section>
-      <section>
-        <h2>Windows x64 through WSL 2</h2>
-        <p>Open PowerShell as Administrator, install WSL, and restart when prompted:</p>
-        <pre><code>wsl --install</code></pre>
-        <p>Open the Ubuntu terminal and use the APT procedure above. Initialize and run Onyx inside that Linux terminal. See Microsoft's <a href="https://learn.microsoft.com/windows/wsl/install">WSL installation guide</a> for version requirements. Native Windows processes, PowerShell, Command Prompt, and Windows services are not supported.</p>
-      </section>
-      <section>
-        <h2>Verify and remove</h2>
-        <pre><code>onyx --version
-onyx check -- rm -rf /example
-# Expected: blocked result and exit code 77</code></pre>
-        <p>Use <code>sudo dnf remove onyx</code>, <code>sudo apt-get remove onyx</code>, or <code>cargo uninstall onyx-guard</code> for the matching install path. Package removal deliberately leaves <code>/var/lib/onyx</code> execution state and <code>/etc/onyx</code> policy, administrator authentication state, and audit evidence. Review retention and incident requirements before deleting either path separately.</p>
-      </section>
+sudo osmanthus policy protect add --path /srv/production \
+  --action delete --action rename --action truncate
+sudo osmanthus policy monitor add 1001 --shell /bin/bash</code></pre><p>Use a disposable directory for the first boundary test and keep a console/recovery path before changing a login shell. Normal filesystem enforcement does not require <code>osmanthus run</code>.</p></section>
+      <section><h2>Authenticator rotation</h2><p>While the current TOTP authenticator is available, run <code>sudo osmanthus policy auth rotate</code> to issue a replacement QR/URI. The previous secret becomes invalid immediately. Loss of every enrolled copy requires restoration from a tested root-restricted backup; direct file editing is not a recovery method.</p></section>
+      <section><h2>Remote entry points</h2><p>OpenSSH and local logins for an enrolled account enter through <code>osmanthus-shell</code>. AWS SSM can skip the login shell; use the repository's <a href="https://github.com/ttr1563/osmanthus-shell/blob/main/docs/ssm.md">custom Session document procedure</a>. Restrict IAM so operators can start only that document and cannot update it.</p></section>
+      <section><h2>Migration, rollback, and uninstall</h2><p>Osmanthus does not import legacy Onyx state. Restore any account using <code>/usr/bin/onyx-shell</code> and decommission <code>/sys/fs/bpf/onyx</code> with the matching Onyx binary before installation; Osmanthus refuses to start while the old kernel backend remains.</p><p>Same-ABI BPF upgrades use replacement links and pin promotion. An incompatible ABI is rejected while the old enforcement remains attached; rollback to the previous package or use an authenticated maintenance/decommission/fresh-attach window.</p><pre><code>sudo osmanthus policy monitor remove 1001
+sudo osmanthus daemon decommission
+sudo dnf remove osmanthus        # or: sudo apt-get remove osmanthus</code></pre><p>Uninstall refuses while Osmanthus BPF pins or managed login shells remain. Policy, state, and audit evidence are retained. Review the <a href="https://github.com/ttr1563/osmanthus-shell/blob/main/docs/operations.md">operations runbook</a> before rollback or removal.</p></section>
     </main>
-    <footer><p>Onyx is open source under the MIT License.</p><a href="./">Back to Onyx</a></footer>
+    <footer><p>Osmanthus is open source under the MIT License.</p><a href="./">Back to Osmanthus</a></footer>
   </body>
 </html>

@@ -3,78 +3,80 @@ set -euo pipefail
 
 repository_root="$(git rev-parse --show-toplevel)"
 cd "$repository_root"
-version="${1:?usage: scripts/test-deb.sh VERSION [REPOSITORY_PATH]}"
-repository_path="${2:-docs/apt}"
+version="${1:?usage: scripts/test-deb.sh VERSION [PACKAGE_ROOT]}"
+repository_path="${2:-dist/deb}"
 repository_path="$(realpath -m "$repository_path")"
 case "$repository_path" in
-  "$repository_root/docs/apt" | "$repository_root/dist"/*) ;;
+  "$repository_root/dist"/*) ;;
   *)
-    echo "repository path must be docs/apt or a path below dist" >&2
+    echo "package root must be below dist" >&2
     exit 1
     ;;
 esac
 
-command -v docker >/dev/null || {
-  echo "required command not found: docker" >&2
-  exit 1
-}
-docker info >/dev/null 2>&1 || {
-  echo "Docker daemon is not available" >&2
-  exit 1
-}
-test -s "$repository_path/onyx.asc"
-test -s "$repository_path/dists/stable/InRelease"
-
-images=(debian:12 ubuntu:22.04)
-for image in "${images[@]}"; do
-  docker image inspect "$image" >/dev/null 2>&1 || {
-    echo "required local image not found: $image" >&2
+for command in ar grep tar uname; do
+  command -v "$command" >/dev/null || {
+    echo "required command not found: $command" >&2
     exit 1
   }
-  echo "Testing $image"
-  docker run --rm \
-    --pull=never \
-    --network=none \
-    --cpus=1 \
-    --memory=512m \
-    --pids-limit=256 \
-    --mount "type=bind,src=$repository_path,dst=/repo,readonly" \
-    --env "ONYX_VERSION=$version" \
-    "$image" \
-    bash -euxc '
-      install -D -m0644 /repo/onyx.asc /etc/apt/keyrings/onyx.asc
-      printf "%s\n" \
-        "Types: deb" \
-        "URIs: file:/repo" \
-        "Suites: stable" \
-        "Components: main" \
-        "Architectures: amd64" \
-        "Signed-By: /etc/apt/keyrings/onyx.asc" \
-        > /etc/apt/sources.list.d/onyx.sources
-      apt_options=(
-        -o Dir::Etc::sourcelist=/etc/apt/sources.list.d/onyx.sources
-        -o Dir::Etc::sourceparts=-
-        -o APT::Get::List-Cleanup=0
-      )
-      apt-get "${apt_options[@]}" update
-      apt-get "${apt_options[@]}" install -y onyx
-      test "$(dpkg-query -W -f=\${Version} onyx)" = "${ONYX_VERSION}-1"
-      onyx --version | grep -Fx "onyx ${ONYX_VERSION}"
-      state_dir=/tmp/onyx-smoke
-      onyx --state-dir "$state_dir" init --no-qr --account package-smoke >/dev/null
-      onyx --state-dir "$state_dir" run -- /bin/true
-      set +e
-      onyx check -- rm -rf /example
-      status=$?
-      set -e
-      test "$status" -eq 77
-      install -d -m0700 /var/lib/onyx
-      touch /var/lib/onyx/retain-after-package-removal
-      install -d -m0755 /etc/onyx
-      touch /etc/onyx/retain-after-package-removal
-      apt-get "${apt_options[@]}" purge -y onyx
-      test -e /var/lib/onyx/retain-after-package-removal
-      test -e /etc/onyx/retain-after-package-removal
-      test ! -e /usr/bin/onyx
-    '
 done
+
+if [[ "$(uname -s)" != "Linux" ]]; then
+  echo "the Debian package must be tested natively on Linux" >&2
+  exit 1
+fi
+case "$(uname -m)" in
+  x86_64) deb_architecture="amd64" ;;
+  aarch64) deb_architecture="arm64" ;;
+  *)
+    echo "unsupported Debian package architecture: $(uname -m)" >&2
+    exit 1
+    ;;
+esac
+
+package="$repository_path/osmanthus_${version}-1_${deb_architecture}.deb"
+test -s "$package"
+temporary="$(mktemp -d)"
+trap 'rm -rf "$temporary"' EXIT
+(
+  cd "$temporary"
+  ar x "$package"
+)
+test "$(<"$temporary/debian-binary")" = "2.0"
+tar -xzf "$temporary/control.tar.gz" -C "$temporary"
+tar -xzf "$temporary/data.tar.gz" -C "$temporary"
+grep -Fx "Package: osmanthus" "$temporary/control"
+grep -Fx "Version: ${version}-1" "$temporary/control"
+grep -Fx "Architecture: $deb_architecture" "$temporary/control"
+grep -Fx "Conflicts: onyx" "$temporary/control"
+grep -Fq "/sys/fs/bpf/osmanthus" "$temporary/prerm"
+grep -Fq "/usr/bin/osmanthus-shell" "$temporary/prerm"
+test -x "$temporary/usr/bin/osmanthus"
+test -x "$temporary/usr/bin/osmanthusd"
+test -x "$temporary/usr/bin/osmanthus-shell"
+test -s "$temporary/lib/systemd/system/osmanthusd.service"
+! grep -Fqx "PrivateTmp=yes" "$temporary/lib/systemd/system/osmanthusd.service"
+grep -Fqx "ReadWritePaths=/run/osmanthus /var/log/osmanthus /sys/fs/bpf /etc/osmanthus/admin" \
+  "$temporary/lib/systemd/system/osmanthusd.service"
+! grep -Eq '^ReadWritePaths=(/etc/osmanthus([[:space:]]|$)|.*[[:space:]]/etc/osmanthus([[:space:]]|$))' \
+  "$temporary/lib/systemd/system/osmanthusd.service"
+test -s "$temporary/etc/logrotate.d/osmanthus"
+test -s "$temporary/usr/share/doc/osmanthus/ssm.md.gz"
+gzip -cd "$temporary/usr/share/doc/osmanthus/README.md.gz" | grep -Fq "caller cgroup"
+gzip -cd "$temporary/usr/share/doc/osmanthus/operations.md.gz" | grep -Fq "dedicated transient systemd service"
+test -s "$temporary/usr/share/osmanthus/ssm/osmanthus-session.json"
+"$temporary/usr/bin/osmanthus" --version | grep -Fx "osmanthus $version"
+"$temporary/usr/bin/osmanthus" daemon --help | grep -F decommission
+"$temporary/usr/bin/osmanthus" maintenance --help | grep -F grant
+"$temporary/usr/bin/osmanthus" maintenance --help | grep -F pause
+"$temporary/usr/bin/osmanthus" policy maintenance set --help | grep -F -- --maximum
+"$temporary/usr/bin/osmanthus" policy protect add --help | grep -F write
+"$temporary/usr/bin/osmanthus" policy auth --help | grep -F rotate
+set +e
+"$temporary/usr/bin/osmanthus" check -- rm -rf /example >/dev/null 2>&1
+status=$?
+set -e
+if [[ "$status" -ne 77 ]]; then
+  echo "blocked command check returned unexpected status: $status" >&2
+  exit 1
+fi

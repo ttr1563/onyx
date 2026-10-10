@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::config::{self, EVENTS_DIR, LOCK_FILE};
 use crate::policy::{Finding, RiskLevel};
-use crate::{OnyxError, Result};
+use crate::{OsmanthusError, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -118,7 +118,7 @@ pub fn save_event(root: &Path, event: &GuardEvent) -> Result<()> {
 pub fn load_event(root: &Path, id: &str) -> Result<GuardEvent> {
     let path = event_path(root, id)?;
     if !path.exists() {
-        return Err(OnyxError::EventNotFound(id.to_owned()));
+        return Err(OsmanthusError::EventNotFound(id.to_owned()));
     }
     load_event_path(&path)
 }
@@ -166,7 +166,8 @@ fn event_paths(root: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn event_path(root: &Path, id: &str) -> Result<PathBuf> {
-    Uuid::parse_str(id).map_err(|_| OnyxError::InvalidState(format!("invalid event ID: {id}")))?;
+    Uuid::parse_str(id)
+        .map_err(|_| OsmanthusError::InvalidState(format!("invalid event ID: {id}")))?;
     Ok(root.join(EVENTS_DIR).join(format!("{id}.json")))
 }
 
@@ -176,7 +177,7 @@ fn load_event_path(path: &Path) -> Result<GuardEvent> {
         .file_stem()
         .and_then(|value| value.to_str())
         .ok_or_else(|| {
-            OnyxError::InvalidState(format!("invalid event filename: {}", path.display()))
+            OsmanthusError::InvalidState(format!("invalid event filename: {}", path.display()))
         })?;
     validate_event(&event, file_id)?;
     Ok(event)
@@ -184,15 +185,15 @@ fn load_event_path(path: &Path) -> Result<GuardEvent> {
 
 fn validate_event(event: &GuardEvent, file_id: &str) -> Result<()> {
     if event.schema_version != 1 {
-        return Err(OnyxError::InvalidState(format!(
+        return Err(OsmanthusError::InvalidState(format!(
             "unsupported event schema version: {}",
             event.schema_version
         )));
     }
     Uuid::parse_str(&event.id)
-        .map_err(|_| OnyxError::InvalidState(format!("invalid event ID: {}", event.id)))?;
+        .map_err(|_| OsmanthusError::InvalidState(format!("invalid event ID: {}", event.id)))?;
     if event.id != file_id {
-        return Err(OnyxError::InvalidState(format!(
+        return Err(OsmanthusError::InvalidState(format!(
             "event ID does not match filename: {file_id}"
         )));
     }
@@ -208,7 +209,7 @@ fn validate_event(event: &GuardEvent, file_id: &str) -> Result<()> {
         || event.rule_ids.len() > 1_000
         || event.expires_at_unix < event.created_at_unix
     {
-        return Err(OnyxError::InvalidState(format!(
+        return Err(OsmanthusError::InvalidState(format!(
             "event contains invalid bounded fields: {}",
             event.id
         )));
@@ -231,7 +232,7 @@ fn validate_event(event: &GuardEvent, file_id: &str) -> Result<()> {
         }
     };
     if !valid_status {
-        return Err(OnyxError::InvalidState(format!(
+        return Err(OsmanthusError::InvalidState(format!(
             "event status fields are inconsistent: {}",
             event.id
         )));
@@ -248,7 +249,7 @@ fn validate_event(event: &GuardEvent, file_id: &str) -> Result<()> {
             .zip(event.approved_at_unix)
             .is_some_and(|(consumed, approved)| consumed < approved)
     {
-        return Err(OnyxError::InvalidState(format!(
+        return Err(OsmanthusError::InvalidState(format!(
             "event timestamps are inconsistent: {}",
             event.id
         )));
