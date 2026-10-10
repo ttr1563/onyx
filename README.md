@@ -95,9 +95,11 @@ repository. They do not replace a clean-host install, daemon, login-shell,
 upgrade, or uninstall test. The public DNF/APT repositories are not updated by
 these commands.
 The deb builder maps native Linux `x86_64` to Debian `amd64` and `aarch64` to
-`arm64`; it deliberately rejects cross-packaging and unsupported hosts. ARM64
-source build has been verified on Ubuntu 24.04, while installed-package ARM64
-integration remains a release gate.
+`arm64`; it deliberately rejects cross-packaging and unsupported hosts. Native
+ARM64 build, package install, kernel enforcement, scoped maintenance, audit,
+decommission, and uninstall have been verified on Ubuntu 24.04 with kernel 6.8.
+Each other advertised distribution and architecture still requires its own
+installed-package integration result.
 The legacy Homebrew formula installs Onyx v0.1.3, not Osmanthus.
 
 ### Migrating from Onyx
